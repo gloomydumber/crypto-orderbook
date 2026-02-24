@@ -56,14 +56,13 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
     }}>
       <ColumnHeaders />
 
-      {/* Asks section — column-reverse so scroll origin is at bottom (lowest asks near spread) */}
+      {/* Asks section — column-reverse so lowest asks render near spread */}
       <div style={{
         flex: 1,
-        overflow: 'auto',
+        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column-reverse',
         minHeight: 0,
-        scrollbarGutter: 'stable',
       }}>
         {orderbook.asks.map(entry => (
           <OrderbookRow
@@ -87,12 +86,11 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
         quote={quote}
       />
 
-      {/* Bids section — scrollable, rows from top down */}
+      {/* Bids section — rows from top down */}
       <div style={{
         flex: 1,
-        overflow: 'auto',
+        overflow: 'hidden',
         minHeight: 0,
-        scrollbarGutter: 'stable',
       }}>
         {orderbook.bids.map(entry => (
           <OrderbookRow
