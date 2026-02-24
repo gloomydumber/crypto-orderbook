@@ -10,6 +10,24 @@ import type { OrderbookData } from '../types'
 
 const EMPTY_BOOK: OrderbookData = { bids: [], asks: [], midPrice: null, spread: null, spreadPercent: null }
 
+// Module-level pause flag — skips RAF flushes during grid drag/resize.
+// WS messages still write to localBook (O(1), no React). On resume, one catch-up flush applies all.
+let paused = false
+let pendingFlush: (() => void) | null = null
+
+/**
+ * Pause/resume React state flushes.
+ * While paused, WS data still accumulates in the local book.
+ * On resume, a single catch-up flush applies all pending changes.
+ */
+export function setUpdatesPaused(value: boolean) {
+  paused = value
+  if (!value && pendingFlush) {
+    pendingFlush()
+    pendingFlush = null
+  }
+}
+
 export function useOrderbook() {
   const exchangeId = useAtomValue(exchangeIdAtom)
   const quote = useAtomValue(quoteAtom)
@@ -68,6 +86,11 @@ export function useOrderbook() {
   const flushOrderbook = useCallback(() => {
     rafRef.current = null
     if (!pendingUpdateRef.current) return
+    if (paused) {
+      // Store reference to this flush so it runs on resume
+      pendingFlush = flushOrderbook
+      return
+    }
     pendingUpdateRef.current = false
 
     // For server-grouped exchanges, data arrives pre-grouped — skip client-side grouping
@@ -129,7 +152,7 @@ export function useOrderbook() {
 
     // Throttle: schedule one flush per animation frame
     pendingUpdateRef.current = true
-    if (rafRef.current === null) {
+    if (!paused && rafRef.current === null) {
       rafRef.current = requestAnimationFrame(flushOrderbook)
     }
   }, [flushOrderbook])

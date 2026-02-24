@@ -219,3 +219,28 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 ### Deleted
 - `src/components/OrderbookDisplay/OrderbookSkeleton.tsx`
 - `src/components/OrderbookToolbar/DepthSelector.tsx`
+
+---
+
+## Session: 2026-02-24 — setUpdatesPaused API (v0.1.4)
+
+### What Was Done
+
+Added `setUpdatesPaused(value: boolean)` API — a module-level pause flag that skips RAF flushes to Jotai atoms during grid drag/resize in the host app (wts-frontend). Follows the same pattern as `@gloomydumber/premium-table`'s `setUpdatesPaused`.
+
+**How it works:**
+- Module-level `paused` boolean in `useOrderbook.ts`
+- When paused: WebSocket messages still write to the local book (`applyUpdate` — O(1), no React), but `flushOrderbook` returns early and no new RAFs are scheduled
+- On resume: a single catch-up flush applies all accumulated changes in one frame
+- Exported from `src/lib.ts` as `setUpdatesPaused`
+
+**Why:** The orderbook's per-frame RAF flushes compete with react-grid-layout's layout calculations during drag/resize, causing visible lag. Pausing atom flushes gives the grid the main thread during interaction.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/hooks/useOrderbook.ts` | Added `paused` flag, `pendingFlush`, `setUpdatesPaused()` export; skip RAF when paused |
+| `src/lib.ts` | Added `setUpdatesPaused` export |
+| `package.json` | Version bump 0.1.3 → 0.1.4 |
+

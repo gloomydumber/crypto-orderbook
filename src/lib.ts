@@ -5,6 +5,9 @@ import './lib-styles.css'
 export { Orderbook } from './components/Orderbook'
 export type { OrderbookProps } from './components/Orderbook'
 
+// Control API
+export { setUpdatesPaused } from './hooks/useOrderbook'
+
 // Types
 export type { NormalizedPair, ExchangeInfo } from './types'
 export { EXCHANGES } from './types'
