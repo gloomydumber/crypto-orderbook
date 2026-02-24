@@ -184,8 +184,9 @@ export function useOrderbook() {
 
   // Helper: set tick options and auto-select native tick if current selection is invalid
   const applyTickOptions = useCallback((options: number[], nativeTick: number) => {
-    setTickOptionsRef.current(options)
-    if (!options.includes(tickSizeRef.current) || tickSizeRef.current === 0) {
+    const deduped = [...new Set(options)]
+    setTickOptionsRef.current(deduped)
+    if (!deduped.includes(tickSizeRef.current) || tickSizeRef.current === 0) {
       setTickSizeRef.current(nativeTick)
     }
   }, [])
