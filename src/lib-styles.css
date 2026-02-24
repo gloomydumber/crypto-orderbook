@@ -1,0 +1,29 @@
+/* crypto-orderbook library styles */
+
+/* Theme-aware scrollbar — matches wts-frontend GlobalStyles */
+.cob-scroller {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 0, 0.15) transparent;
+}
+.cob-scroller::-webkit-scrollbar {
+  width: 4px;
+  background: transparent;
+}
+.cob-scroller::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 0, 0.15);
+  border-radius: 2px;
+}
+.cob-scroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 0, 0.3);
+}
+
+/* Light mode scrollbar */
+[data-cob-theme="light"] .cob-scroller {
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+[data-cob-theme="light"] .cob-scroller::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+[data-cob-theme="light"] .cob-scroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}

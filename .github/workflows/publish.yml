@@ -1,0 +1,63 @@
+name: Publish to GitHub Packages
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+      - run: npm ci
+      - name: Build and lint
+        run: npm run build && npm run lint
+      - name: Check if version changed
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          PUBLISHED=$(npm view @gloomydumber/crypto-orderbook version 2>/dev/null || echo "0.0.0")
+          echo "published=$PUBLISHED" >> "$GITHUB_OUTPUT"
+          if [ "$CURRENT" != "$PUBLISHED" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish to GitHub Packages
+        if: steps.version.outputs.changed == 'true'
+        run: npm run build:lib && npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build release notes from commits
+        if: steps.version.outputs.changed == 'true'
+        id: notes
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | head -n 1)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          BODY=$(git log "$RANGE" --pretty=format:"- **%s**%n%n%b" --no-merges | sed '/^Co-Authored-By:/d' | sed '/^[[:space:]]*$/N;/^\n$/d')
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "body<<$EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "$EOF" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub Release
+        if: steps.version.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.current }}
+          name: v${{ steps.version.outputs.current }}
+          body: ${{ steps.notes.outputs.body }}
