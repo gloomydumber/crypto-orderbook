@@ -25,12 +25,13 @@ export function QuoteSelector() {
       variant="outlined"
       sx={{
         minWidth: 70,
+        fontSize: '0.75rem',
         '& .MuiSelect-select': { py: '2px', px: 1 },
         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
       }}
     >
       {quoteCurrencies.map(q => (
-        <MenuItem key={q} value={q}>{q}</MenuItem>
+        <MenuItem key={q} value={q} sx={{ fontSize: '0.75rem' }}>{q}</MenuItem>
       ))}
     </Select>
   )

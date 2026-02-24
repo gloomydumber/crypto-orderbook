@@ -25,12 +25,13 @@ export function ExchangeSelector() {
       variant="outlined"
       sx={{
         minWidth: 90,
+        fontSize: '0.75rem',
         '& .MuiSelect-select': { py: '2px', px: 1 },
         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
       }}
     >
       {EXCHANGES.map(ex => (
-        <MenuItem key={ex.id} value={ex.id}>{ex.name}</MenuItem>
+        <MenuItem key={ex.id} value={ex.id} sx={{ fontSize: '0.75rem' }}>{ex.name}</MenuItem>
       ))}
     </Select>
   )

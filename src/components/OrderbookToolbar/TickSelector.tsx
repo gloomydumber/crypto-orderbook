@@ -17,12 +17,13 @@ export function TickSelector() {
       variant="outlined"
       sx={{
         minWidth: 70,
+        fontSize: '0.75rem',
         '& .MuiSelect-select': { py: '2px', px: 1 },
         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
       }}
     >
       {options.map(v => (
-        <MenuItem key={v} value={v}>{v}</MenuItem>
+        <MenuItem key={v} value={v} sx={{ fontSize: '0.75rem' }}>{v}</MenuItem>
       ))}
     </Select>
   )
