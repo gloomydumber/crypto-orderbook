@@ -1,28 +1,5 @@
-import { useMemo, forwardRef, useRef, useState, useEffect } from 'react'
 import { useAtomValue } from 'jotai'
 import { useTheme } from '@mui/material'
-import { Virtuoso } from 'react-virtuoso'
-
-function useContainerHeight() {
-  const ref = useRef<HTMLDivElement>(null)
-  const [height, setHeight] = useState(0)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(([entry]) => {
-      const h = Math.round(entry.contentRect.height)
-      setHeight(prev => (prev !== h ? h : prev))
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  return { ref, height }
-}
-
-// Disable scrolling — rows are revealed only by widget resize
-const NoScrollScroller = forwardRef<HTMLDivElement, React.ComponentPropsWithRef<'div'>>(
-  (props, ref) => <div {...props} ref={ref} style={{ ...props.style, overflow: 'hidden' }} />,
-)
 import { orderbookAtom } from '../../store/orderbookAtoms'
 import { quoteAtom } from '../../store/configAtoms'
 import { CircularProgress } from '@mui/material'
@@ -41,15 +18,6 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
 
   const primaryColor = theme.palette.primary.main
   const secondaryColor = theme.palette.text.secondary
-
-  const { ref: asksRef, height: asksHeight } = useContainerHeight()
-  const { ref: bidsRef, height: bidsHeight } = useContainerHeight()
-
-  // Must be before early return to satisfy rules of hooks
-  const reversedAsks = useMemo(
-    () => [...orderbook.asks].reverse(),
-    [orderbook.asks],
-  )
 
   if (orderbook.bids.length === 0 && orderbook.asks.length === 0) {
     return (
@@ -91,19 +59,17 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
     }}>
       <ColumnHeaders />
 
-      {/* Asks section — reversed so lowest asks render near spread */}
-      <div ref={asksRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      <Virtuoso
-        style={{ height: asksHeight || '100%' }}
-        components={{ Scroller: NoScrollScroller }}
-        data={reversedAsks}
-        fixedItemHeight={26}
-        overscan={10}
-        initialTopMostItemIndex={reversedAsks.length - 1}
-        followOutput="auto"
-        computeItemKey={(_, entry) => entry.price}
-        itemContent={(_, entry) => (
+      {/* Asks section — column-reverse so lowest asks render near spread */}
+      <div style={{
+        flex: 1,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column-reverse',
+        minHeight: 0,
+      }}>
+        {orderbook.asks.map(entry => (
           <OrderbookRow
+            key={entry.price}
             entry={entry}
             side="ask"
             maxQty={maxQty}
@@ -112,8 +78,7 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
             secondaryColor={secondaryColor}
             onCopy={onCopy}
           />
-        )}
-      />
+        ))}
       </div>
 
       {/* Spread row */}
@@ -125,16 +90,14 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
       />
 
       {/* Bids section — rows from top down */}
-      <div ref={bidsRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      <Virtuoso
-        style={{ height: bidsHeight || '100%' }}
-        components={{ Scroller: NoScrollScroller }}
-        data={orderbook.bids}
-        fixedItemHeight={26}
-        overscan={10}
-        computeItemKey={(_, entry) => entry.price}
-        itemContent={(_, entry) => (
+      <div style={{
+        flex: 1,
+        overflow: 'hidden',
+        minHeight: 0,
+      }}>
+        {orderbook.bids.map(entry => (
           <OrderbookRow
+            key={entry.price}
             entry={entry}
             side="bid"
             maxQty={maxQty}
@@ -143,8 +106,7 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
             secondaryColor={secondaryColor}
             onCopy={onCopy}
           />
-        )}
-      />
+        ))}
       </div>
     </div>
   )
