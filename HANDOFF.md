@@ -179,13 +179,13 @@ Fixed react-virtuoso not detecting container shrink when react-grid-layout widge
 - Green thumb (`rgba(0, 255, 0, 0.15)`) visible only on hover
 - `scrollbar-gutter: stable` on both bid/ask containers to prevent layout shift when scrollbar appears/disappears
 
-### 7. Asks Section — Reverse Display (v0.2.0: Virtuoso)
+### 7. Asks Section Column-Reverse
 
-**Problem**: Lowest asks (nearest to spread) must appear at the bottom, near the spread row.
+**Problem**: With `overflow: auto`, the asks section scroll started at the top (highest prices), hiding the most relevant data (lowest asks near spread).
 
-**v0.1.x solution**: Used CSS `flexDirection: 'column-reverse'` on the asks container.
+**Solution**: Changed asks container to `flexDirection: 'column-reverse'`. Asks array (sorted ascending) renders with the first items (lowest prices) at the bottom near spread, which is the scroll origin. `overflow: hidden` clips higher asks that don't fit.
 
-**v0.2.0 solution**: Virtuoso doesn't support `column-reverse`. Instead, the asks array is reversed (`[...asks].reverse()`) via `useMemo`, and Virtuoso renders with `initialTopMostItemIndex={length-1}` + `followOutput="auto"` to start scrolled to the bottom (lowest asks visible).
+*Note: v0.2.0–v0.3.0 used react-virtuoso with a reversed array approach, but Virtuoso couldn't detect container shrink with `overflow: hidden`. Reverted to column-reverse in v0.3.1.*
 
 ### 8. Row Height Increased
 
@@ -205,7 +205,7 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 
 1. **OrderbookRow** — `React.memo` prevents re-renders; inline `style={}` avoids Emotion style injection in hot path
 2. **maxQty quantization** (v0.2.0) — `maxQty` quantized to nearest power of 2 via `Math.pow(2, Math.ceil(Math.log2(rawMax)))`. Only changes when the largest order magnitude doubles or halves, so `React.memo` on `OrderbookRow` actually skips re-renders for unchanged rows. Reduces per-tick re-renders from ~100 to ~1-5.
-3. **react-virtuoso** (v0.2.0, updated v0.3.0) — Both asks and bids rendered via `Virtuoso` with `fixedItemHeight={26}`, `overscan={10}`, and `computeItemKey` by price. Only visible rows (~15-20) are in DOM instead of all 100. v0.3.0: overscan reduced from 150→10 (150 with 50 items defeated virtualization), explicit pixel height via `useContainerHeight()` ResizeObserver hook replaces CSS flex sizing to fix shrink detection.
+3. **overflow: hidden clipping** (v0.3.1) — Both asks (`column-reverse`) and bids containers use `overflow: hidden` to show only rows that fit. No scrollbar, no scrolling. Widget resize reveals more/fewer rows. *(react-virtuoso was tried in v0.2.0–v0.3.0 but couldn't handle container shrink with overflow:hidden — reverted in v0.3.1)*
 4. **RAF throttle** — max 1 atom flush per animation frame regardless of WS message rate
 5. **50-row cap** — prevents 1000+ DOM nodes for deep books (Binance/Coinbase)
 6. **Pruning** — `applyUpdate` auto-prunes to 2000 levels per side when exceeding 4000 (prevents unbounded Map growth from diff streams)
@@ -294,4 +294,29 @@ Two performance optimizations to reduce per-tick work in the orderbook:
 | `package.json` | react-virtuoso peer+dev dep, version 0.1.4 → 0.2.0 |
 | `vite.config.ts` | react-virtuoso in rollup externals |
 | `HANDOFF.md` | Updated design decisions, performance notes, session log |
+
+---
+
+## Session: 2026-02-25 — Drop Virtuoso, Fix Shrink Issue (v0.3.1)
+
+### What Was Done
+
+**Problem:** Virtuoso with `overflow: hidden` on the Scroller cannot detect when the container shrinks. DOM elements rendered during widget expand persist after shrink. The asks (sell) side worked by accident because `followOutput="auto"` forced recalculation, but the bids (buy) side retained stale DOM nodes.
+
+**Root cause:** Virtuoso relies on its Scroller's scroll events and ResizeObserver for viewport detection. `overflow: hidden` on the Scroller prevents this. The `useContainerHeight` + explicit pixel height workaround from v0.3.0 also didn't fix it.
+
+**Fix:** Dropped Virtuoso entirely. Reverted to simple `.map()` + `overflow: hidden` containers (the pre-v0.2.0 approach). The CSS `overflow: hidden` clips rows that don't fit naturally — no library needed.
+- Asks: `column-reverse` container clips higher asks at the top, lowest asks near spread always visible
+- Bids: normal container clips lower bids at the bottom, highest bids near spread always visible
+- **maxQty power-of-2 quantization retained** — this was the highest-impact optimization (re-renders ~100/tick → ~1-5/tick)
+
+**Why not fix Virtuoso instead?** For a non-scrollable list where the user explicitly doesn't want scroll interaction, Virtuoso is the wrong tool. Simple `.map()` + CSS clipping is simpler, more reliable, and has zero library overhead. The 100 DOM nodes (50 per side) are negligible since `React.memo` + quantized `maxQty` prevents most re-renders.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/OrderbookDisplay/OrderbookDisplay.tsx` | Reverted to `.map()` + `overflow: hidden`, removed Virtuoso/hooks |
+| `package.json` | Removed react-virtuoso peer+dev dep, version 0.3.0 → 0.3.1 |
+| `vite.config.ts` | Removed react-virtuoso from rollup externals |
 
