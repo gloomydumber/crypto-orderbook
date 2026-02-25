@@ -348,3 +348,37 @@ Asks side: reversed array + `initialTopMostItemIndex` + `followOutput` + `scroll
 | `package.json` | Re-added react-virtuoso peer+dev dep, version 0.3.1 → 0.3.2 |
 | `vite.config.ts` | Re-added react-virtuoso to rollup externals |
 
+---
+
+## Session: 2026-02-25 — Drop Virtuoso, Array Slicing (v0.3.3)
+
+### What Was Done
+
+**Problem:** v0.3.2 rendered nothing — only headers and spread row visible. The `useContainerHeight` hook used `useRef` + `useEffect([], [])` which runs once on mount. On first render, the early return (loading state with `CircularProgress`) means the asks/bids container divs aren't in the DOM, so `ref.current` is `null` when the effect runs. Height stays 0 → `{height > 0 && <Virtuoso>}` never renders. When data loads and the early return is skipped, the effect doesn't re-run because deps are `[]`.
+
+**Fix:** Two changes:
+1. **Callback ref pattern** for `useContainerHeight` — `useCallback((node) => { if (node) observe(node); else cleanup(); }, [])`. Fires when the DOM element attaches/detaches, regardless of when that happens. No timing issues.
+2. **Drop Virtuoso entirely, use array slicing** — `Math.floor(containerHeight / ROW_HEIGHT)` gives the exact number of visible rows. `orderbook.asks.slice(0, askCount)` and `.bids.slice(0, bidCount)` render only what fits. Simple `.map()` rendering. No scroll, no library overhead.
+   - Asks: `column-reverse` container puts lowest asks (index 0) near spread
+   - Bids: normal top-down, highest bids near spread
+   - Widget resize immediately changes visible count (ResizeObserver fires → height updates → slice count changes)
+
+**Why array slicing works well for now:** For a non-scrollable orderbook (rows revealed only by widget resize), array slicing gives exact DOM count control, zero library overhead, and correct shrink behavior by construction. The 50-row cap + `React.memo` + quantized `maxQty` already keep per-tick work minimal.
+
+### Virtualization — Future Consideration
+
+Array slicing is the current approach, but react-virtuoso remains an option if requirements change:
+
+- **When to reconsider:** If depth increases beyond 50 per side (e.g., 200+ levels for deep-book analysis) and scrollable orderbook is desired, Virtuoso would avoid rendering all rows in DOM.
+- **Known issue to handle:** Virtuoso v4's `visibleRange` directional filter doesn't detect container shrink (only expansion). This was solved in `premium-table` v0.5.12 with a two-part fix: (1) consumer-side ResizeObserver passing pixel height, (2) library-side debounced React key remount on shrink. The same approach would apply here. See `../wts-frontend-rgl-bench/results/VIRTUOSO_SHRINK_REPORT.md` for full details.
+- **Asks display:** Virtuoso doesn't support `column-reverse`. Previous implementation (v0.2.0–v0.3.0) used reversed array + `initialTopMostItemIndex` + `followOutput="auto"`. This worked for expansion but not shrink.
+- **Trade-off:** Orderbook WS ticks arrive every ~100ms — scrolling a fast-updating list is poor UX. But if scroll is needed (e.g., for analysis mode with paused updates), Virtuoso is the right tool.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `OrderbookDisplay.tsx` | Callback ref `useContainerHeight`, array slicing, `.map()` rendering, removed Virtuoso |
+| `package.json` | Removed react-virtuoso peer+dev dep, version 0.3.2 → 0.3.3 |
+| `vite.config.ts` | Removed react-virtuoso from rollup externals |
+
