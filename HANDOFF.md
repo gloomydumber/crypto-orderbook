@@ -155,11 +155,13 @@ interface OrderbookProps {
 - Green thumb (`rgba(0, 255, 0, 0.15)`) visible only on hover
 - `scrollbar-gutter: stable` on both bid/ask containers to prevent layout shift when scrollbar appears/disappears
 
-### 7. Asks Section Column-Reverse
+### 7. Asks Section — Reverse Display (v0.2.0: Virtuoso)
 
-**Problem**: With `overflow: auto`, the asks section scroll started at the top (highest prices), hiding the most relevant data (lowest asks near spread).
+**Problem**: Lowest asks (nearest to spread) must appear at the bottom, near the spread row.
 
-**Solution**: Changed asks container to `flexDirection: 'column-reverse'`. Asks array (sorted ascending) renders with the first items (lowest prices) at the bottom near spread, which is the scroll origin. Scrolling up reveals higher asks.
+**v0.1.x solution**: Used CSS `flexDirection: 'column-reverse'` on the asks container.
+
+**v0.2.0 solution**: Virtuoso doesn't support `column-reverse`. Instead, the asks array is reversed (`[...asks].reverse()`) via `useMemo`, and Virtuoso renders with `initialTopMostItemIndex={length-1}` + `followOutput="auto"` to start scrolled to the bottom (lowest asks visible).
 
 ### 8. Row Height Increased
 
@@ -178,12 +180,14 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 ## Performance Notes
 
 1. **OrderbookRow** — `React.memo` prevents re-renders; inline `style={}` avoids Emotion style injection in hot path
-2. **RAF throttle** — max 1 atom flush per animation frame regardless of WS message rate
-3. **50-row cap** — prevents 1000+ DOM nodes for deep books (Binance/Coinbase)
-4. **Pruning** — `applyUpdate` auto-prunes to 2000 levels per side when exceeding 4000 (prevents unbounded Map growth from diff streams)
-5. **AbortController** — all async fetches abort on cleanup/pair change to prevent race conditions
-6. **scrollbar-gutter: stable** — prevents layout shift from scrollbar appearing/disappearing
-7. **Edge padding** — qty=0 placeholder at outermost levels prevents visual jitter
+2. **maxQty quantization** (v0.2.0) — `maxQty` quantized to nearest power of 2 via `Math.pow(2, Math.ceil(Math.log2(rawMax)))`. Only changes when the largest order magnitude doubles or halves, so `React.memo` on `OrderbookRow` actually skips re-renders for unchanged rows. Reduces per-tick re-renders from ~100 to ~1-5.
+3. **react-virtuoso** (v0.2.0) — Both asks and bids rendered via `Virtuoso` with `fixedItemHeight={26}`, `overscan={150}`, and `computeItemKey` by price. Only visible rows (~15-20) are in DOM instead of all 100.
+4. **RAF throttle** — max 1 atom flush per animation frame regardless of WS message rate
+5. **50-row cap** — prevents 1000+ DOM nodes for deep books (Binance/Coinbase)
+6. **Pruning** — `applyUpdate` auto-prunes to 2000 levels per side when exceeding 4000 (prevents unbounded Map growth from diff streams)
+7. **AbortController** — all async fetches abort on cleanup/pair change to prevent race conditions
+8. **scrollbar-gutter: stable** — prevents layout shift from scrollbar appearing/disappearing
+9. **Edge padding** — qty=0 placeholder at outermost levels prevents visual jitter
 
 ## Known Issues / Future Work
 
@@ -243,4 +247,27 @@ Added `setUpdatesPaused(value: boolean)` API — a module-level pause flag that 
 | `src/hooks/useOrderbook.ts` | Added `paused` flag, `pendingFlush`, `setUpdatesPaused()` export; skip RAF when paused |
 | `src/lib.ts` | Added `setUpdatesPaused` export |
 | `package.json` | Version bump 0.1.3 → 0.1.4 |
+
+---
+
+## Session: 2026-02-25 — Virtualization + maxQty Fix (v0.2.0)
+
+### What Was Done
+
+Two performance optimizations to reduce per-tick work in the orderbook:
+
+1. **maxQty power-of-2 quantization** — `maxQty` (used for depth bar normalization) now quantized to nearest power of 2 via `Math.pow(2, Math.ceil(Math.log2(rawMax)))`. Previously recalculated from raw values every render, changing on every WS tick and defeating `React.memo` on all 100 `OrderbookRow` components. Now only changes when the largest order magnitude doubles or halves (~every few seconds). Re-renders drop from ~100 to ~1-5 per tick.
+
+2. **react-virtuoso** — Replaced manual `.map()` containers for asks and bids with `Virtuoso` instances. Only visible rows (~15-20) are rendered in DOM instead of all 100. Configuration: `fixedItemHeight={26}` (22px line + 4px padding), `overscan={150}`, `computeItemKey` by price. Asks use reversed array + `initialTopMostItemIndex` + `followOutput="auto"` (replaces CSS `column-reverse` which Virtuoso doesn't support).
+
+**BREAKING:** `react-virtuoso` is now a required peer dependency.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/OrderbookDisplay/OrderbookDisplay.tsx` | maxQty quantization, Virtuoso for asks+bids, `useMemo` for reversed asks |
+| `package.json` | react-virtuoso peer+dev dep, version 0.1.4 → 0.2.0 |
+| `vite.config.ts` | react-virtuoso in rollup externals |
+| `HANDOFF.md` | Updated design decisions, performance notes, session log |
 
