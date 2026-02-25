@@ -320,3 +320,31 @@ Two performance optimizations to reduce per-tick work in the orderbook:
 | `package.json` | Removed react-virtuoso peer+dev dep, version 0.3.0 → 0.3.1 |
 | `vite.config.ts` | Removed react-virtuoso from rollup externals |
 
+---
+
+## Session: 2026-02-25 — Fix Virtuoso Properly (v0.3.2)
+
+### What Was Done
+
+**Problem:** v0.3.1 dropped Virtuoso, so all 100 rows render in DOM even initially — no virtualization at all.
+
+**Root cause of all previous failures:** The Scroller component had `overflow: hidden`. Virtuoso REQUIRES `overflow: auto` on its Scroller to detect viewport size changes. The `useContainerHeight` approach was correct but didn't help because `overflow: hidden` still killed viewport detection.
+
+**Fix (v0.3.2):** Three-part approach that works:
+1. **Scroller keeps `overflow: auto`** — Virtuoso's internal ResizeObserver/scroll detection works
+2. **Scrollbar hidden via CSS** — `scrollbar-width: none` (Firefox), `::-webkit-scrollbar { display: none }` (Chrome/Safari), `msOverflowStyle: none` (Edge)
+3. **Wheel events blocked** — `addEventListener('wheel', preventDefault, { passive: false })` on the Scroller DOM node
+4. **Explicit pixel height** — `useContainerHeight` measures each section via ResizeObserver, passes exact pixel value to Virtuoso (not percentage)
+5. **Conditional render** — `{height > 0 && <Virtuoso ...>}` prevents mounting before measurement
+
+Asks side: reversed array + `initialTopMostItemIndex` + `followOutput` + `scrollToIndex` on height change to keep lowest asks near spread.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `OrderbookDisplay.tsx` | Full rewrite: `useContainerHeight`, `NoScrollScroller` (overflow:auto + hidden scrollbar + blocked wheel), conditional Virtuoso render |
+| `lib-styles.css` | Added `.cob-no-scroll::-webkit-scrollbar { display: none }` |
+| `package.json` | Re-added react-virtuoso peer+dev dep, version 0.3.1 → 0.3.2 |
+| `vite.config.ts` | Re-added react-virtuoso to rollup externals |
+
