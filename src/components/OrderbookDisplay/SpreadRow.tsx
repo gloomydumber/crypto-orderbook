@@ -14,6 +14,7 @@ export function SpreadRow({ midPrice, spread, spreadPercent, quote }: SpreadRowP
   if (!midPrice) {
     return (
       <div style={{
+        flexShrink: 0,
         padding: '3px 8px',
         fontSize: '0.65rem',
         fontFamily: "'JetBrains Mono', monospace",
@@ -29,6 +30,7 @@ export function SpreadRow({ midPrice, spread, spreadPercent, quote }: SpreadRowP
 
   return (
     <div style={{
+      flexShrink: 0,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',

@@ -105,6 +105,30 @@ interface OrderbookProps {
 }
 ```
 
+## Session: 2026-02-25 — Fix Virtuoso Shrink Detection (v0.3.0)
+
+### What Was Done
+
+Fixed react-virtuoso not detecting container shrink when react-grid-layout widgets are resized smaller. Rows remained in the DOM and continued processing WebSocket updates, degrading performance.
+
+**Root cause:** Both Virtuoso instances used `style={{ flex: 1, minHeight: 0 }}` — CSS-relative sizing. When the parent container shrank, Virtuoso's internal ResizeObserver didn't correctly recalculate the visible range. Additionally, `overscan={150}` with only 50 items per side meant all items were always rendered, completely defeating virtualization.
+
+**Fix:**
+1. Added `useContainerHeight()` hook — local `ResizeObserver` measures the container's actual pixel height
+2. Each Virtuoso wrapped in `<div ref={...Ref} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>` and receives `style={{ height: measuredHeight || '100%' }}` instead of flex sizing
+3. Reduced `overscan` from `150` to `10` — the old value rendered all 50 items regardless of container size
+4. Added `flexShrink: 0` to both SpreadRow container divs to prevent the spread row from being squeezed during flex layout reflow
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/OrderbookDisplay/OrderbookDisplay.tsx` | Added `useContainerHeight()` hook (2 instances), wrapper divs, pixel-based height, overscan 150→10 |
+| `src/components/OrderbookDisplay/SpreadRow.tsx` | Added `flexShrink: 0` to both container divs |
+| `package.json` | Version bump 0.2.1 → 0.3.0 |
+
+---
+
 ## Key Design Decisions & Session Changes
 
 ### 1. Tick Options Pre-loaded via REST APIs
@@ -181,7 +205,7 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 
 1. **OrderbookRow** — `React.memo` prevents re-renders; inline `style={}` avoids Emotion style injection in hot path
 2. **maxQty quantization** (v0.2.0) — `maxQty` quantized to nearest power of 2 via `Math.pow(2, Math.ceil(Math.log2(rawMax)))`. Only changes when the largest order magnitude doubles or halves, so `React.memo` on `OrderbookRow` actually skips re-renders for unchanged rows. Reduces per-tick re-renders from ~100 to ~1-5.
-3. **react-virtuoso** (v0.2.0) — Both asks and bids rendered via `Virtuoso` with `fixedItemHeight={26}`, `overscan={150}`, and `computeItemKey` by price. Only visible rows (~15-20) are in DOM instead of all 100.
+3. **react-virtuoso** (v0.2.0, updated v0.3.0) — Both asks and bids rendered via `Virtuoso` with `fixedItemHeight={26}`, `overscan={10}`, and `computeItemKey` by price. Only visible rows (~15-20) are in DOM instead of all 100. v0.3.0: overscan reduced from 150→10 (150 with 50 items defeated virtualization), explicit pixel height via `useContainerHeight()` ResizeObserver hook replaces CSS flex sizing to fix shrink detection.
 4. **RAF throttle** — max 1 atom flush per animation frame regardless of WS message rate
 5. **50-row cap** — prevents 1000+ DOM nodes for deep books (Binance/Coinbase)
 6. **Pruning** — `applyUpdate` auto-prunes to 2000 levels per side when exceeding 4000 (prevents unbounded Map growth from diff streams)
