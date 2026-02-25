@@ -27,3 +27,8 @@
 [data-cob-theme="light"] .cob-scroller::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.3);
 }
+
+/* No-scroll scroller — hidden scrollbar for Chrome/Safari */
+.cob-no-scroll::-webkit-scrollbar {
+  display: none;
+}

@@ -1,11 +1,76 @@
+import { useMemo, useRef, useState, useEffect, useCallback, forwardRef } from 'react'
 import { useAtomValue } from 'jotai'
 import { useTheme } from '@mui/material'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { orderbookAtom } from '../../store/orderbookAtoms'
 import { quoteAtom } from '../../store/configAtoms'
 import { CircularProgress } from '@mui/material'
 import { ColumnHeaders } from './ColumnHeaders'
 import { OrderbookRow } from './OrderbookRow'
 import { SpreadRow } from './SpreadRow'
+
+/** Measure a container's pixel height via ResizeObserver. */
+function useContainerHeight() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [height, setHeight] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      setHeight(Math.round(entry.contentRect.height))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return { ref, height }
+}
+
+/**
+ * Scroller that keeps overflow:auto (Virtuoso needs it for viewport detection)
+ * but hides the scrollbar and blocks wheel/touch scroll.
+ * Rows are revealed only by widget resize, not user scrolling.
+ */
+const NoScrollScroller = forwardRef<HTMLDivElement, React.ComponentPropsWithRef<'div'>>(
+  function NoScrollScroller(props, ref) {
+    const localRef = useRef<HTMLDivElement | null>(null)
+
+    // Combine forwarded ref + local ref
+    const setRefs = useCallback(
+      (node: HTMLDivElement | null) => {
+        localRef.current = node
+        if (typeof ref === 'function') ref(node)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        else if (ref) (ref as any).current = node
+      },
+      [ref],
+    )
+
+    // Prevent wheel scroll — must be non-passive to call preventDefault
+    useEffect(() => {
+      const el = localRef.current
+      if (!el) return
+      const block = (e: WheelEvent) => e.preventDefault()
+      el.addEventListener('wheel', block, { passive: false })
+      return () => el.removeEventListener('wheel', block)
+    }, [])
+
+    return (
+      <div
+        {...props}
+        ref={setRefs}
+        style={{
+          ...props.style,
+          // overflow:auto is required — Virtuoso uses it for viewport detection.
+          // Scrollbar is hidden via CSS below; wheel events are blocked above.
+          overflowY: 'auto',
+          scrollbarWidth: 'none',       // Firefox
+          msOverflowStyle: 'none',      // IE/Edge
+        }}
+        className="cob-no-scroll"
+      />
+    )
+  },
+)
 
 interface OrderbookDisplayProps {
   onCopy?: (label: string, value: string) => void
@@ -18,6 +83,26 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
 
   const primaryColor = theme.palette.primary.main
   const secondaryColor = theme.palette.text.secondary
+
+  const { ref: asksRef, height: asksHeight } = useContainerHeight()
+  const { ref: bidsRef, height: bidsHeight } = useContainerHeight()
+  const asksVirtuosoRef = useRef<VirtuosoHandle>(null)
+
+  const reversedAsks = useMemo(
+    () => [...orderbook.asks].reverse(),
+    [orderbook.asks],
+  )
+
+  // When asks container height changes, scroll Virtuoso to the bottom
+  // so lowest asks stay near the spread row.
+  useEffect(() => {
+    if (asksHeight > 0 && reversedAsks.length > 0) {
+      asksVirtuosoRef.current?.scrollToIndex({
+        index: reversedAsks.length - 1,
+        align: 'end',
+      })
+    }
+  }, [asksHeight, reversedAsks.length])
 
   if (orderbook.bids.length === 0 && orderbook.asks.length === 0) {
     return (
@@ -59,29 +144,33 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
     }}>
       <ColumnHeaders />
 
-      {/* Asks section — column-reverse so lowest asks render near spread */}
-      <div style={{
-        flex: 1,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column-reverse',
-        minHeight: 0,
-      }}>
-        {orderbook.asks.map(entry => (
-          <OrderbookRow
-            key={entry.price}
-            entry={entry}
-            side="ask"
-            maxQty={maxQty}
-            quote={quote}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-            onCopy={onCopy}
+      {/* Asks — measure container, pass explicit pixel height to Virtuoso */}
+      <div ref={asksRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        {asksHeight > 0 && (
+          <Virtuoso
+            ref={asksVirtuosoRef}
+            style={{ height: asksHeight }}
+            components={{ Scroller: NoScrollScroller }}
+            data={reversedAsks}
+            fixedItemHeight={26}
+            initialTopMostItemIndex={reversedAsks.length - 1}
+            followOutput="auto"
+            computeItemKey={(_, entry) => entry.price}
+            itemContent={(_, entry) => (
+              <OrderbookRow
+                entry={entry}
+                side="ask"
+                maxQty={maxQty}
+                quote={quote}
+                primaryColor={primaryColor}
+                secondaryColor={secondaryColor}
+                onCopy={onCopy}
+              />
+            )}
           />
-        ))}
+        )}
       </div>
 
-      {/* Spread row */}
       <SpreadRow
         midPrice={orderbook.midPrice}
         spread={orderbook.spread}
@@ -89,24 +178,28 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
         quote={quote}
       />
 
-      {/* Bids section — rows from top down */}
-      <div style={{
-        flex: 1,
-        overflow: 'hidden',
-        minHeight: 0,
-      }}>
-        {orderbook.bids.map(entry => (
-          <OrderbookRow
-            key={entry.price}
-            entry={entry}
-            side="bid"
-            maxQty={maxQty}
-            quote={quote}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-            onCopy={onCopy}
+      {/* Bids — measure container, pass explicit pixel height to Virtuoso */}
+      <div ref={bidsRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        {bidsHeight > 0 && (
+          <Virtuoso
+            style={{ height: bidsHeight }}
+            components={{ Scroller: NoScrollScroller }}
+            data={orderbook.bids}
+            fixedItemHeight={26}
+            computeItemKey={(_, entry) => entry.price}
+            itemContent={(_, entry) => (
+              <OrderbookRow
+                entry={entry}
+                side="bid"
+                maxQty={maxQty}
+                quote={quote}
+                primaryColor={primaryColor}
+                secondaryColor={secondaryColor}
+                onCopy={onCopy}
+              />
+            )}
           />
-        ))}
+        )}
       </div>
     </div>
   )
