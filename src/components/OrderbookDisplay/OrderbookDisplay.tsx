@@ -1,7 +1,12 @@
-import { useMemo } from 'react'
+import { useMemo, forwardRef } from 'react'
 import { useAtomValue } from 'jotai'
 import { useTheme } from '@mui/material'
 import { Virtuoso } from 'react-virtuoso'
+
+// Disable scrolling — rows are revealed only by widget resize
+const NoScrollScroller = forwardRef<HTMLDivElement, React.ComponentPropsWithRef<'div'>>(
+  (props, ref) => <div {...props} ref={ref} style={{ ...props.style, overflow: 'hidden' }} />,
+)
 import { orderbookAtom } from '../../store/orderbookAtoms'
 import { quoteAtom } from '../../store/configAtoms'
 import { CircularProgress } from '@mui/material'
@@ -70,6 +75,7 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
       {/* Asks section — reversed so lowest asks render near spread */}
       <Virtuoso
         style={{ flex: 1, minHeight: 0 }}
+        components={{ Scroller: NoScrollScroller }}
         data={reversedAsks}
         fixedItemHeight={26}
         overscan={150}
@@ -100,6 +106,7 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
       {/* Bids section — rows from top down */}
       <Virtuoso
         style={{ flex: 1, minHeight: 0 }}
+        components={{ Scroller: NoScrollScroller }}
         data={orderbook.bids}
         fixedItemHeight={26}
         overscan={150}
