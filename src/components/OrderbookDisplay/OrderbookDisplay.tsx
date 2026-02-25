@@ -1,5 +1,7 @@
+import { useMemo } from 'react'
 import { useAtomValue } from 'jotai'
 import { useTheme } from '@mui/material'
+import { Virtuoso } from 'react-virtuoso'
 import { orderbookAtom } from '../../store/orderbookAtoms'
 import { quoteAtom } from '../../store/configAtoms'
 import { CircularProgress } from '@mui/material'
@@ -19,6 +21,12 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
   const primaryColor = theme.palette.primary.main
   const secondaryColor = theme.palette.text.secondary
 
+  // Must be before early return to satisfy rules of hooks
+  const reversedAsks = useMemo(
+    () => [...orderbook.asks].reverse(),
+    [orderbook.asks],
+  )
+
   if (orderbook.bids.length === 0 && orderbook.asks.length === 0) {
     return (
       <div style={{
@@ -36,16 +44,19 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
   }
 
   // Max individual quantity across both sides — for gauge bar normalization.
-  // Per-row qty bars show meaningful differences even after a whale order.
-  let maxQty = 0
+  // Quantized to nearest power of 2 so maxQty only changes on magnitude shifts
+  // (doubles/halves), not every tick. This lets React.memo on OrderbookRow skip
+  // re-renders for rows whose entry hasn't changed.
+  let rawMax = 0
   for (const e of orderbook.asks) {
     const q = parseFloat(e.qty)
-    if (q > maxQty) maxQty = q
+    if (q > rawMax) rawMax = q
   }
   for (const e of orderbook.bids) {
     const q = parseFloat(e.qty)
-    if (q > maxQty) maxQty = q
+    if (q > rawMax) rawMax = q
   }
+  const maxQty = rawMax > 0 ? Math.pow(2, Math.ceil(Math.log2(rawMax))) : 0
 
   return (
     <div style={{
@@ -56,17 +67,17 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
     }}>
       <ColumnHeaders />
 
-      {/* Asks section — column-reverse so lowest asks render near spread */}
-      <div style={{
-        flex: 1,
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column-reverse',
-        minHeight: 0,
-      }}>
-        {orderbook.asks.map(entry => (
+      {/* Asks section — reversed so lowest asks render near spread */}
+      <Virtuoso
+        style={{ flex: 1, minHeight: 0 }}
+        data={reversedAsks}
+        fixedItemHeight={26}
+        overscan={150}
+        initialTopMostItemIndex={reversedAsks.length - 1}
+        followOutput="auto"
+        computeItemKey={(_, entry) => entry.price}
+        itemContent={(_, entry) => (
           <OrderbookRow
-            key={entry.price}
             entry={entry}
             side="ask"
             maxQty={maxQty}
@@ -75,8 +86,8 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
             secondaryColor={secondaryColor}
             onCopy={onCopy}
           />
-        ))}
-      </div>
+        )}
+      />
 
       {/* Spread row */}
       <SpreadRow
@@ -87,14 +98,14 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
       />
 
       {/* Bids section — rows from top down */}
-      <div style={{
-        flex: 1,
-        overflow: 'hidden',
-        minHeight: 0,
-      }}>
-        {orderbook.bids.map(entry => (
+      <Virtuoso
+        style={{ flex: 1, minHeight: 0 }}
+        data={orderbook.bids}
+        fixedItemHeight={26}
+        overscan={150}
+        computeItemKey={(_, entry) => entry.price}
+        itemContent={(_, entry) => (
           <OrderbookRow
-            key={entry.price}
             entry={entry}
             side="bid"
             maxQty={maxQty}
@@ -103,8 +114,8 @@ export function OrderbookDisplay({ onCopy }: OrderbookDisplayProps) {
             secondaryColor={secondaryColor}
             onCopy={onCopy}
           />
-        ))}
-      </div>
+        )}
+      />
     </div>
   )
 }

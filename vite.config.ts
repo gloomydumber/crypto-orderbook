@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => ({
         '@mui/material', '@mui/icons-material',
         '@emotion/react', '@emotion/styled',
         'jotai', 'jotai/utils',
+        'react-virtuoso',
       ],
     },
   } : {},
