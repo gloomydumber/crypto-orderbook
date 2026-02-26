@@ -377,6 +377,24 @@ Asks side: reversed array + `initialTopMostItemIndex` + `followOutput` + `scroll
 
 ---
 
+## Session: 2026-02-26 — Upbit/Bithumb Heartbeat (v0.3.7)
+
+### What Was Done
+
+**Problem:** Upbit and Bithumb WebSocket connections had no heartbeat/ping-pong. Both exchanges have a 120-second idle timeout — long-idle connections (e.g., waiting for a new listing) would be dropped silently.
+
+**Fix:** Added `heartbeat: { message: 'PING', interval: 60_000 }` to both adapters. The existing `useWebSocket` hook already supports the `heartbeat` field — sends the message via `ws.send()` at the configured interval. Both exchanges accept a `"PING"` text message and respond with `{"status":"UP"}` every 10 seconds while connected.
+
+Also added `{"status":"UP"}` filtering in `parseMessage` for both adapters to prevent heartbeat responses from being processed as orderbook data.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/exchanges/adapters/upbit.ts` | Added `heartbeat` config, filter `{"status":"UP"}` in `parseMessage` |
+| `src/exchanges/adapters/bithumb.ts` | Added `heartbeat` config, filter `{"status":"UP"}` in `parseMessage` |
+| `package.json` | Version 0.3.6 → 0.3.7 |
+
 ## Session: 2026-02-25 — Drop Virtuoso, Array Slicing (v0.3.3)
 
 ### What Was Done

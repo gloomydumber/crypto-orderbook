@@ -73,6 +73,8 @@ export const bithumbAdapter: OrderbookAdapter = {
     return null
   },
 
+  heartbeat: { message: 'PING', interval: 60_000 },
+
   async parseMessage(data: string | Blob): Promise<OrderbookUpdate | null> {
     let text: string
     if (data instanceof Blob) {
@@ -80,6 +82,9 @@ export const bithumbAdapter: OrderbookAdapter = {
     } else {
       text = data
     }
+
+    // Filter heartbeat response
+    if (text === '{"status":"UP"}') return null
 
     try {
       const parsed = JSON.parse(text) as BithumbOrderbookMessage

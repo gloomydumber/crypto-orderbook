@@ -51,6 +51,8 @@ export const upbitAdapter: OrderbookAdapter = {
     return null // Upbit doesn't support unsubscribe; close and reconnect
   },
 
+  heartbeat: { message: 'PING', interval: 60_000 },
+
   async parseMessage(data: string | Blob): Promise<OrderbookUpdate | null> {
     let text: string
     if (data instanceof Blob) {
@@ -58,6 +60,9 @@ export const upbitAdapter: OrderbookAdapter = {
     } else {
       text = data
     }
+
+    // Filter heartbeat response
+    if (text === '{"status":"UP"}') return null
 
     try {
       const parsed = JSON.parse(text) as UpbitOrderbookMessage
