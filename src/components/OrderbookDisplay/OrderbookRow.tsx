@@ -29,9 +29,8 @@ export const OrderbookRow = memo(function OrderbookRow({
   const barWidth = maxQty > 0 ? (qtyNum / maxQty) * 100 : 0
   const isBid = side === 'bid'
 
-  // Match mock: asks = #ff0000, bids = #0000ff
-  const priceColor = isBid ? '#0000ff' : '#ff0000'
-  const barColor = isBid ? 'rgba(0, 0, 255, 0.12)' : 'rgba(255, 0, 0, 0.12)'
+  const priceColor = isBid ? '#2a5cff' : '#ff0000'
+  const barColor = isBid ? 'rgba(42, 92, 255, 0.12)' : 'rgba(255, 0, 0, 0.12)'
 
   const handleClick = useCallback(() => {
     if (onCopy) {
