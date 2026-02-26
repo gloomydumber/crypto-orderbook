@@ -350,7 +350,7 @@ Asks side: reversed array + `initialTopMostItemIndex` + `followOutput` + `scroll
 
 ---
 
-## Session: 2026-02-26 — Binance Snapshot/Diff Sync + Crossed-Book Detection (v0.3.4)
+## Session: 2026-02-26 — Binance Snapshot/Diff Sync + Crossed-Book Detection (v0.3.5)
 
 ### What Was Done
 
@@ -373,7 +373,7 @@ Asks side: reversed array + `initialTopMostItemIndex` + `followOutput` + `scroll
 | `src/types/orderbook.ts` | Added `firstUpdateId?`, `lastUpdateId?` to `OrderbookUpdate` |
 | `src/exchanges/adapters/binance.ts` | Return `U`/`u` as sequence IDs from `parseMessage`, `lastUpdateId` from `fetchSnapshot` |
 | `src/hooks/useOrderbook.ts` | Buffer/drain sync logic, crossed-book detection, edge padding fix, reconnection re-sync |
-| `package.json` | Version bump 0.3.3 → 0.3.4 |
+| `package.json` | Version bump 0.3.3 → 0.3.5 |
 
 ---
 
