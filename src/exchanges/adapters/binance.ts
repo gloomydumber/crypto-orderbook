@@ -65,6 +65,8 @@ export const binanceAdapter: OrderbookAdapter = {
         type: 'delta',
         bids: parsed.b,
         asks: parsed.a,
+        firstUpdateId: parsed.U,
+        lastUpdateId: parsed.u,
       }
     } catch {
       return null
@@ -77,7 +79,7 @@ export const binanceAdapter: OrderbookAdapter = {
       `https://api.binance.com/api/v3/depth?symbol=${symbol}&limit=1000`,
       signal,
     )
-    return { type: 'snapshot', bids: data.bids, asks: data.asks }
+    return { type: 'snapshot', bids: data.bids, asks: data.asks, lastUpdateId: data.lastUpdateId }
   },
 
   buildSymbol(base: string, quote: string) {

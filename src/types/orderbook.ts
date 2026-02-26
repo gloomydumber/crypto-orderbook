@@ -16,6 +16,8 @@ export interface OrderbookUpdate {
   type: 'snapshot' | 'delta'
   bids: [string, string][]   // [price, qty][]
   asks: [string, string][]   // [price, qty][]
+  firstUpdateId?: number     // Binance diff: U
+  lastUpdateId?: number      // Binance diff: u, snapshot: lastUpdateId
 }
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'

@@ -6,7 +6,7 @@ import { getAdapterById } from '../exchanges/registry'
 import { useWebSocket } from './useWebSocket'
 import { useAvailablePairs } from './useAvailablePairs'
 import { createLocalBook, applyUpdate, getSortedLevels, getTickOptions } from '../utils/orderbook-manager'
-import type { OrderbookData } from '../types'
+import type { OrderbookData, OrderbookUpdate } from '../types'
 
 const EMPTY_BOOK: OrderbookData = { bids: [], asks: [], midPrice: null, spread: null, spreadPercent: null }
 
@@ -83,6 +83,13 @@ export function useOrderbook() {
   const prevTopAskRef = useRef<string | null>(null)   // highest ask price
   const prevBottomBidRef = useRef<string | null>(null) // lowest bid price
 
+  // Binance snapshot/diff sequencing refs
+  // snapshotSeqRef: null = sync pending (buffer diffs), number = synced (last applied snapshot seq)
+  const snapshotSeqRef = useRef<number | null>(0)
+  const syncBufferRef = useRef<OrderbookUpdate[]>([])
+  const lastSeqRef = useRef<number>(0)
+  const reconnectFetchRef = useRef<(() => void) | null>(null)
+
   const flushOrderbook = useCallback(() => {
     rafRef.current = null
     if (!pendingUpdateRef.current) return
@@ -97,7 +104,42 @@ export function useOrderbook() {
     const clientTick = serverLevelsRef.current !== null ? 0 : tickSizeRef.current
     // Cap rendered rows — the flex container clips overflow anyway.
     // Prevents sorting+rendering 1000+ DOM nodes for deep books (Binance/Coinbase).
-    const { bids, asks } = getSortedLevels(localBookRef.current, 50, clientTick)
+    let { bids, asks } = getSortedLevels(localBookRef.current, 50, clientTick)
+
+    // --- Crossed-book detection (universal safety net) ---
+    // If bestAsk < bestBid, the book is corrupted — prune outlier side from the Map.
+    if (bids.length > 0 && asks.length > 0) {
+      const bestBidPrice = parseFloat(bids[0].price)
+      const bestAskPrice = parseFloat(asks[0].price)
+      if (bestAskPrice < bestBidPrice) {
+        // Count which side has fewer crossed entries (those are the outliers)
+        const staleAsks = asks.filter(a => parseFloat(a.price) < bestBidPrice).length
+        const staleBids = bids.filter(b => parseFloat(b.price) > bestAskPrice).length
+
+        if (staleAsks <= staleBids) {
+          // Fewer stale asks → remove ask entries below bestBid from the Map
+          for (const a of asks) {
+            if (parseFloat(a.price) < bestBidPrice) {
+              localBookRef.current.asks.delete(a.price)
+            }
+          }
+        } else {
+          // Fewer stale bids → remove bid entries above bestAsk from the Map
+          for (const b of bids) {
+            if (parseFloat(b.price) > bestAskPrice) {
+              localBookRef.current.bids.delete(b.price)
+            }
+          }
+        }
+        // Re-sort after pruning
+        ;({ bids, asks } = getSortedLevels(localBookRef.current, 50, clientTick))
+      }
+    }
+
+    // Update tracked edges BEFORE padding — capture actual data edges so padded
+    // entries don't self-perpetuate (padded entries are single-frame placeholders).
+    const actualTopAsk = asks.length > 0 ? asks[asks.length - 1].price : null
+    const actualBottomBid = bids.length > 0 ? bids[bids.length - 1].price : null
 
     // Pad vanished edge levels with qty=0 to prevent visual shrinking.
     // Asks are sorted ascending — last element is the highest (outermost) ask.
@@ -117,9 +159,9 @@ export function useOrderbook() {
       }
     }
 
-    // Update tracked edges from actual data (highest ask, lowest bid)
-    prevTopAskRef.current = asks.length > 0 ? asks[asks.length - 1].price : null
-    prevBottomBidRef.current = bids.length > 0 ? bids[bids.length - 1].price : null
+    // Store actual data edges (not padded) for next frame's comparison
+    prevTopAskRef.current = actualTopAsk
+    prevBottomBidRef.current = actualBottomBid
 
     let midPrice: string | null = null
     let spread: string | null = null
@@ -148,6 +190,12 @@ export function useOrderbook() {
     const update = await currentAdapter.parseMessage(data)
     if (!update) return
 
+    // Binance snapshot/diff sync: buffer diffs until snapshot is applied
+    if (snapshotSeqRef.current === null && update.type === 'delta') {
+      syncBufferRef.current.push(update)
+      return
+    }
+
     applyUpdate(localBookRef.current, update)
 
     // Throttle: schedule one flush per animation frame
@@ -159,6 +207,21 @@ export function useOrderbook() {
 
   const onOpen = useCallback(() => {
     setConnectionStatusRef.current('connected')
+    // Detect reconnection: if localBook has data and adapter uses fetchSnapshot,
+    // the book may be stale — reset sync state and re-fetch snapshot.
+    const currentAdapter = adapterRef.current
+    const book = localBookRef.current
+    const isReconnect = (book.bids.size > 0 || book.asks.size > 0) && currentAdapter?.fetchSnapshot
+    if (isReconnect) {
+      // Enter buffering mode, clear stale book
+      snapshotSeqRef.current = null
+      syncBufferRef.current = []
+      localBookRef.current = createLocalBook()
+      prevTopAskRef.current = null
+      prevBottomBidRef.current = null
+      // Re-fetch snapshot (uses reconnectFetchRef set up in effect)
+      reconnectFetchRef.current?.()
+    }
   }, [])
 
   const onClose = useCallback(() => {
@@ -295,19 +358,74 @@ export function useOrderbook() {
         .catch(() => { /* ignore — tick selector stays hidden until resolved */ })
     }
 
-    // Fetch deep REST snapshot on pair change (e.g. Binance limit=1000)
-    if (isPairChange && adapter.fetchSnapshot) {
+    // Shared snapshot fetch + drain logic for initial connect and reconnection
+    const fetchAndSyncSnapshot = () => {
+      if (!adapter.fetchSnapshot) return
       adapter.fetchSnapshot({ base, quote }, abortController.signal)
         .then(snapshot => {
-          if (snapshot && !abortController.signal.aborted) {
-            applyUpdate(localBookRef.current, snapshot)
-            pendingUpdateRef.current = true
-            if (rafRef.current === null) {
-              rafRef.current = requestAnimationFrame(flushOrderbook)
+          if (!snapshot || abortController.signal.aborted) return
+          const snapshotLastId = snapshot.lastUpdateId ?? 0
+
+          // Apply snapshot to local book
+          applyUpdate(localBookRef.current, snapshot)
+
+          // Drain buffered diffs
+          const buffer = syncBufferRef.current
+          syncBufferRef.current = []
+          let lastAppliedSeq = 0
+
+          if (snapshotLastId > 0) {
+            for (const diff of buffer) {
+              // Drop events fully before snapshot
+              if (diff.lastUpdateId != null && diff.lastUpdateId <= snapshotLastId) continue
+              // First valid event must overlap snapshot seq
+              if (diff.firstUpdateId != null && diff.firstUpdateId > snapshotLastId + 1) {
+                // Gap detected — diffs missed, but snapshot is still better than nothing
+                break
+              }
+              applyUpdate(localBookRef.current, diff)
+              if (diff.lastUpdateId != null) lastAppliedSeq = diff.lastUpdateId
+            }
+          } else {
+            // Non-sequenced snapshot (other exchanges) — apply all buffered
+            for (const diff of buffer) {
+              applyUpdate(localBookRef.current, diff)
             }
           }
+
+          // Mark as synced — future diffs apply directly
+          snapshotSeqRef.current = snapshotLastId
+          lastSeqRef.current = lastAppliedSeq || snapshotLastId
+
+          pendingUpdateRef.current = true
+          if (rafRef.current === null) {
+            rafRef.current = requestAnimationFrame(flushOrderbook)
+          }
         })
-        .catch(() => { /* REST failed — WS diffs still work, just fewer levels */ })
+        .catch(() => {
+          // REST failed — exit buffering so WS diffs can still work
+          snapshotSeqRef.current = 0
+          const buffer = syncBufferRef.current
+          syncBufferRef.current = []
+          for (const diff of buffer) {
+            applyUpdate(localBookRef.current, diff)
+          }
+          pendingUpdateRef.current = true
+          if (rafRef.current === null) {
+            rafRef.current = requestAnimationFrame(flushOrderbook)
+          }
+        })
+    }
+
+    // Store ref for reconnection re-fetch
+    reconnectFetchRef.current = fetchAndSyncSnapshot
+
+    // Fetch deep REST snapshot on pair change (e.g. Binance limit=1000)
+    if (isPairChange && adapter.fetchSnapshot) {
+      // Enter buffering mode: diffs are held until snapshot resolves
+      snapshotSeqRef.current = null
+      syncBufferRef.current = []
+      fetchAndSyncSnapshot()
     }
 
     return () => {

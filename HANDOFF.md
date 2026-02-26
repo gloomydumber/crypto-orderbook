@@ -350,6 +350,33 @@ Asks side: reversed array + `initialTopMostItemIndex` + `followOutput` + `scroll
 
 ---
 
+## Session: 2026-02-26 — Binance Snapshot/Diff Sync + Crossed-Book Detection (v0.3.4)
+
+### What Was Done
+
+**Problem:** The lowest ask (sell-side) became stale after running for a while, producing a crossed orderbook (negative spread). Root cause: Binance adapter fetches a REST snapshot and receives WS diffs independently with no synchronization. Diffs that remove a level arrive before the snapshot is applied, so the stale level from the snapshot persists forever.
+
+**Fix — three parts:**
+
+1. **Binance snapshot/diff sequencing** — WS diffs are buffered (`snapshotSeqRef = null`) until the REST snapshot resolves. On resolution, the buffer is drained per Binance's official protocol: diffs with `lastUpdateId <= snapshot.lastUpdateId` are dropped, the first valid diff must have `firstUpdateId <= snapshot.lastUpdateId + 1`, and subsequent diffs are applied in order. `OrderbookUpdate` gained optional `firstUpdateId`/`lastUpdateId` fields. On REST failure, buffering exits gracefully so WS diffs still work.
+
+2. **Crossed-book detection (universal safety net)** — In `flushOrderbook`, if `bestAsk < bestBid`, the side with fewer crossed entries is identified as the outlier side (stale levels) and pruned from the underlying Map, then `getSortedLevels` re-runs. Handles both stale asks (the known Binance bug) and hypothetical stale bids on any exchange.
+
+3. **Edge padding self-perpetuation fix** — `prevTopAskRef`/`prevBottomBidRef` were updated AFTER padding, so the padded qty=0 entry became the tracked edge and was re-padded every flush forever. Fix: capture actual data edges BEFORE padding, then pad, then store actual edges for next frame. Padded entries are now single-frame placeholders that naturally expire.
+
+4. **Reconnection re-sync** — `onOpen` detects reconnection (book has data + adapter has `fetchSnapshot`) and resets sync state (enters buffering mode, clears stale book, re-fetches snapshot via shared `fetchAndSyncSnapshot` function).
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/types/orderbook.ts` | Added `firstUpdateId?`, `lastUpdateId?` to `OrderbookUpdate` |
+| `src/exchanges/adapters/binance.ts` | Return `U`/`u` as sequence IDs from `parseMessage`, `lastUpdateId` from `fetchSnapshot` |
+| `src/hooks/useOrderbook.ts` | Buffer/drain sync logic, crossed-book detection, edge padding fix, reconnection re-sync |
+| `package.json` | Version bump 0.3.3 → 0.3.4 |
+
+---
+
 ## Session: 2026-02-25 — Drop Virtuoso, Array Slicing (v0.3.3)
 
 ### What Was Done
