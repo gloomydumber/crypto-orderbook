@@ -196,6 +196,26 @@ export function useOrderbook() {
       return
     }
 
+    // Sequence gap detection (Binance docs steps 6-7):
+    // Each diff's U must equal the previous diff's u + 1.
+    // If a gap is found, diffs were lost — re-sync from a fresh snapshot.
+    if (
+      update.type === 'delta' &&
+      update.firstUpdateId != null &&
+      lastSeqRef.current > 0 &&
+      update.firstUpdateId > lastSeqRef.current + 1
+    ) {
+      snapshotSeqRef.current = null
+      syncBufferRef.current = [update]
+      reconnectFetchRef.current?.()
+      return
+    }
+
+    // Track last applied sequence for gap detection
+    if (update.lastUpdateId != null) {
+      lastSeqRef.current = update.lastUpdateId
+    }
+
     applyUpdate(localBookRef.current, update)
 
     // Throttle: schedule one flush per animation frame

@@ -395,6 +395,31 @@ Also added `{"status":"UP"}` filtering in `parseMessage` for both adapters to pr
 | `src/exchanges/adapters/bithumb.ts` | Added `heartbeat` config, filter `{"status":"UP"}` in `parseMessage` |
 | `package.json` | Version 0.3.6 → 0.3.7 |
 
+## Session: 2026-02-26 — Binance Sequence Gap Detection (v0.3.8)
+
+### What Was Done
+
+**Problem:** After 30+ minutes of continuous operation, the lowest ask (sell-side) price on Binance became stale again — the same symptom as the v0.3.6 fix, but a different root cause. The v0.3.6 snapshot/diff sync handled initial synchronization correctly, but **never validated sequence continuity on subsequent diffs**.
+
+**Root cause:** Per Binance docs (steps 6-7), each diff's `U` (firstUpdateId) must equal the previous diff's `u` (lastUpdateId) + 1. If a sequence gap occurs (e.g., due to brief network glitch, browser throttling, or server-side consolidation), a missed diff that removes a price level means that level persists in the Map forever. The `lastSeqRef` existed but was never updated after initial sync, so gap detection was impossible.
+
+**Fix:** Added sequence gap detection in `onMessage`:
+- After initial sync, every incoming diff's `firstUpdateId` is compared against `lastSeqRef.current + 1`
+- If `firstUpdateId > lastSeqRef.current + 1`, a gap is detected — re-enter buffering mode and re-fetch snapshot via `reconnectFetchRef`
+- `lastSeqRef.current` is now updated on every applied diff (was previously only set during buffer drain)
+- The current diff that triggered gap detection is pushed to the sync buffer so it's not lost
+
+This implements Binance's official protocol steps 6-7, which were missing from the v0.3.6 fix.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/hooks/useOrderbook.ts` | Added sequence gap detection in `onMessage`, track `lastSeqRef` on every diff |
+| `package.json` | Version 0.3.7 → 0.3.8 |
+
+---
+
 ## Session: 2026-02-25 — Drop Virtuoso, Array Slicing (v0.3.3)
 
 ### What Was Done
