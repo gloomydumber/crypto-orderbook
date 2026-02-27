@@ -420,6 +420,23 @@ This implements Binance's official protocol steps 6-7, which were missing from t
 
 ---
 
+## Session: 2026-02-27 — Widen Base Selector (v0.3.10)
+
+### What Was Done
+
+**Problem:** Long ticker names (e.g., "SAHARA") were truncated to "SAHA..." in the base asset Autocomplete dropdown due to `width: 100` being too narrow.
+
+**Fix:** Increased `BaseSelector` Autocomplete width from 100 to 120.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/OrderbookToolbar/BaseSelector.tsx` | `width: 100` → `width: 120` |
+| `package.json` | Version 0.3.9 → 0.3.10 |
+
+---
+
 ## Session: 2026-02-25 — Drop Virtuoso, Array Slicing (v0.3.3)
 
 ### What Was Done
