@@ -28,7 +28,7 @@ export function setUpdatesPaused(value: boolean) {
   }
 }
 
-export function useOrderbook() {
+export function useOrderbook(availablePairs?: string[]) {
   const exchangeId = useAtomValue(exchangeIdAtom)
   const quote = useAtomValue(quoteAtom)
   const base = useAtomValue(baseAtom)
@@ -40,8 +40,8 @@ export function useOrderbook() {
   const setTickOptions = useSetAtom(tickOptionsAtom)
   const setTickSize = useSetAtom(tickSizeAtom)
 
-  // Fetch available pairs when exchange/quote changes
-  useAvailablePairs()
+  // Fetch available pairs when exchange/quote changes (skip internal fetch if host provides pairs)
+  useAvailablePairs(availablePairs)
 
   const adapter = useMemo(() => getAdapterById(exchangeId), [exchangeId])
   const localBookRef = useRef(createLocalBook())

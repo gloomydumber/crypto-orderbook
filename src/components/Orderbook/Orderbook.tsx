@@ -9,9 +9,10 @@ export interface OrderbookProps {
   theme?: Theme
   showHeader?: boolean
   onCopy?: (label: string, value: string) => void
+  availablePairs?: string[]
 }
 
-export function Orderbook({ height = '100vh', theme, showHeader = true, onCopy }: OrderbookProps) {
+export function Orderbook({ height = '100vh', theme, showHeader = true, onCopy, availablePairs }: OrderbookProps) {
   const resolvedTheme = theme ?? defaultTheme
   const isDark = resolvedTheme.palette.mode === 'dark'
 
@@ -20,7 +21,7 @@ export function Orderbook({ height = '100vh', theme, showHeader = true, onCopy }
       <ThemeProvider theme={resolvedTheme}>
         <CssBaseline />
         <Box data-cob-theme={isDark ? 'dark' : 'light'} sx={{ width: '100%', height }}>
-          <OrderbookView showHeader={showHeader} onCopy={onCopy} />
+          <OrderbookView showHeader={showHeader} onCopy={onCopy} availablePairs={availablePairs} />
         </Box>
       </ThemeProvider>
     </Provider>

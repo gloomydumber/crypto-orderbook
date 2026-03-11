@@ -4,13 +4,27 @@ import { exchangeIdAtom, quoteAtom, baseAtom } from '../store/configAtoms'
 import { availablePairsAtom } from '../store/orderbookAtoms'
 import { getAdapterById } from '../exchanges/registry'
 
-export function useAvailablePairs() {
+export function useAvailablePairs(externalPairs?: string[]) {
   const exchangeId = useAtomValue(exchangeIdAtom)
   const quote = useAtomValue(quoteAtom)
   const [, setAvailablePairs] = useAtom(availablePairsAtom)
   const [base, setBase] = useAtom(baseAtom)
 
+  // Use externally provided pairs if available
   useEffect(() => {
+    if (!externalPairs) return
+    const sorted = [...externalPairs].sort()
+    setAvailablePairs(sorted)
+
+    if (sorted.length > 0 && !sorted.includes(base)) {
+      const btc = sorted.find(p => p === 'BTC')
+      setBase(btc ?? sorted[0])
+    }
+  }, [externalPairs, base, setAvailablePairs, setBase])
+
+  // Internal fetch — only when no external pairs provided
+  useEffect(() => {
+    if (externalPairs) return
     const adapter = getAdapterById(exchangeId)
     if (!adapter) return
 
@@ -36,5 +50,5 @@ export function useAvailablePairs() {
       })
 
     return () => controller.abort()
-  }, [exchangeId, quote, base, setAvailablePairs, setBase])
+  }, [externalPairs, exchangeId, quote, base, setAvailablePairs, setBase])
 }

@@ -6,13 +6,14 @@ import { useOrderbook } from '../../hooks/useOrderbook'
 interface OrderbookViewProps {
   showHeader?: boolean
   onCopy?: (label: string, value: string) => void
+  availablePairs?: string[]
 }
 
-export function OrderbookView({ showHeader = true, onCopy }: OrderbookViewProps) {
+export function OrderbookView({ showHeader = true, onCopy, availablePairs }: OrderbookViewProps) {
   const theme = useTheme()
 
   // Initialize the orderbook WebSocket lifecycle
-  useOrderbook()
+  useOrderbook(availablePairs)
 
   return (
     <Box style={{

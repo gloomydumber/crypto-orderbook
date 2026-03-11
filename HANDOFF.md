@@ -102,8 +102,33 @@ interface OrderbookProps {
   theme?: Theme               // MUI Theme override
   showHeader?: boolean        // default: true — "ORDERBOOK" title bar
   onCopy?: (label: string, value: string) => void
+  availablePairs?: string[]   // Host-provided pairs — skips internal REST fetch when set
 }
 ```
+
+## Session: 2026-03-11 — Add `availablePairs` Prop for Host-Provided Pair Data
+
+### What Was Done
+
+Added an optional `availablePairs?: string[]` prop to the `Orderbook` component. When provided, the package skips its internal REST fetch for available trading pairs and uses the host-supplied data directly. When omitted, the package fetches internally as before (fully backwards compatible).
+
+**Motivation:** Host apps like `wts-frontend` may already have pair data fetched (e.g., from a shared data layer or Rust/Tauri backend). Passing pre-fetched pairs avoids redundant REST calls and potential rate-limit issues.
+
+**How it works:**
+- `Orderbook` → `OrderbookView` → `useOrderbook(availablePairs)` → `useAvailablePairs(externalPairs)`
+- `useAvailablePairs` now has two `useEffect` blocks: one for external pairs (sort + set atom), one for internal fetch (skipped when external pairs provided)
+- Both paths share the same base-reset logic (prefer BTC if current base not in list)
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/Orderbook/Orderbook.tsx` | Added `availablePairs?: string[]` to `OrderbookProps`, pass through to `OrderbookView` |
+| `src/components/OrderbookView/OrderbookView.tsx` | Added `availablePairs?: string[]` to `OrderbookViewProps`, pass to `useOrderbook()` |
+| `src/hooks/useOrderbook.ts` | Accept `availablePairs` param, pass to `useAvailablePairs()` |
+| `src/hooks/useAvailablePairs.ts` | Accept `externalPairs` param; split into two effects (external vs internal fetch) |
+
+---
 
 ## Session: 2026-02-25 — Fix Virtuoso Shrink Detection (v0.3.0)
 
