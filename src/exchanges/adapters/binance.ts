@@ -105,7 +105,7 @@ export const binanceAdapter: OrderbookAdapter = {
     const json = data as Record<string, unknown>
     if ('symbols' in json) {
       // exchangeInfo: { symbols: [{ baseAsset, quoteAsset, status }] }
-      const info = json as BinanceExchangeInfo
+      const info = json as unknown as BinanceExchangeInfo
       return info.symbols
         .filter(s => s.quoteAsset === quote && s.status === 'TRADING')
         .map(s => s.baseAsset)
