@@ -240,7 +240,7 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 
 ## Known Issues / Future Work
 
-- `atomWithStorage` hydration can race with initial API calls — mitigated by `needsLevelFetch` pattern but worth monitoring
+- ~~`atomWithStorage` hydration can race with initial API calls~~ — **Fixed in v0.4.1**: sync localStorage hydration at module init prevents flash-mount (same pattern as wts-frontend's atoms.ts)
 - Bithumb caches native tick in module-level variable for synchronous `getSubscribeMessage()` — works but fragile if multiple instances exist
 - Coinbase Advanced Trade WS is unauthenticated — may have rate limits or reduced data depth
 - Consider adding `formatPrice` locale support (KRW comma formatting, etc.)
