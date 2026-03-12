@@ -285,7 +285,7 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 
 ### Integration with wts-frontend (verified via HAR analysis)
 
-wts-frontend fetches Upbit `market/all` and Binance `ticker/price` once via `ConnectionManager`, stores raw responses in a shared Jotai atom, and passes them to Orderbook via `rawExchangeData.rawResponses`. The `OrderbookWidget` gates render until shared data is available (`rawData !== null`).
+wts-frontend's `ConnectionManager` + `MarketDataClient` layer deduplicates **all** external REST endpoint requests by URL (same URL = same cached/in-flight Promise). Raw responses are stored in a shared Jotai atom and passed to Orderbook via `rawExchangeData.rawResponses`. The `OrderbookWidget` gates render until shared data is available (`rawData !== null`). The dedup layer is generic — not limited to specific exchanges — and automatically applies to any endpoint added in the future.
 
 **Verified result:**
 - Upbit `market/all`: shared with PremiumTable — no separate Orderbook fetch
