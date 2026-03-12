@@ -89,6 +89,7 @@ interface OrderbookAdapter {
   heartbeat?: { message: string | (() => string); interval: number }
   fetchSnapshot?(pair, signal?): Promise<OrderbookUpdate | null>
   fetchAvailablePairs(quote, signal?): Promise<string[]>
+  parseRawAvailablePairs?(data: unknown, quote: string): string[]  // v0.5.0 — parse host-provided raw REST JSON
   fetchNativeTick?(pair, signal?): Promise<{ nativeTick: number; price: number }>
   fetchSupportedLevels?(pair, signal?): Promise<{ nativeTick: number; levels: number[] }>
 }
@@ -97,36 +98,72 @@ interface OrderbookAdapter {
 ### Public API (Props)
 
 ```typescript
+interface RawExchangeData {
+  rawResponses: Record<string, unknown>  // keyed by exchange ID
+}
 interface OrderbookProps {
   height?: string | number    // default: '100vh'
   theme?: Theme               // MUI Theme override
   showHeader?: boolean        // default: true — "ORDERBOOK" title bar
   onCopy?: (label: string, value: string) => void
-  availablePairs?: string[]   // Host-provided pairs — skips internal REST fetch when set
+  rawExchangeData?: RawExchangeData  // Host-provided raw REST JSON — adapters parse internally
 }
 ```
 
-## Session: 2026-03-11 — Add `availablePairs` Prop for Host-Provided Pair Data
+## Session: 2026-03-12 — Sync Hydration + rawExchangeData Prop + wts-frontend Integration
+
+### Summary
+
+Fixed the `atomWithStorage` flash-mount bug (v0.4.1) and redesigned the host data prop from `availablePairs: string[]` to `rawExchangeData: { rawResponses }` (v0.5.0). Part of a cross-project fix for the Vercel/Upbit cascading failure bug documented in wts-frontend HANDOFF.md.
 
 ### What Was Done
 
-Added an optional `availablePairs?: string[]` prop to the `Orderbook` component. When provided, the package skips its internal REST fetch for available trading pairs and uses the host-supplied data directly. When omitted, the package fetches internally as before (fully backwards compatible).
+**1. Sync localStorage hydration (v0.4.1):**
 
-**Motivation:** Host apps like `wts-frontend` may already have pair data fetched (e.g., from a shared data layer or Rust/Tauri backend). Passing pre-fetched pairs avoids redundant REST calls and potential rate-limit issues.
+`configAtoms.ts` (`exchangeIdAtom`, `quoteAtom`, `baseAtom`, `tickSizeAtom`) all used `atomWithStorage` with hardcoded defaults. Jotai's async hydration caused a first-render with wrong values — e.g., `exchangeIdAtom` defaulted to `'upbit'` before localStorage loaded the user's actual selection (`'binance'`). This triggered phantom REST/WebSocket connections to the wrong exchange.
 
-**How it works:**
-- `Orderbook` → `OrderbookView` → `useOrderbook(availablePairs)` → `useAvailablePairs(externalPairs)`
-- `useAvailablePairs` now has two `useEffect` blocks: one for external pairs (sort + set atom), one for internal fetch (skipped when external pairs provided)
-- Both paths share the same base-reset logic (prefer BTC if current base not in list)
+Fix: Added a generic `hydrate<T>(key, fallback)` helper that reads localStorage synchronously at module init. Same pattern as wts-frontend's `atoms.ts`. The async hydration still runs but finds the same value → no intermediate wrong state.
 
-### Files Changed
+```typescript
+function hydrate<T>(key: string, fallback: T): T {
+  try {
+    const stored = localStorage.getItem(key)
+    if (stored != null) return JSON.parse(stored) as T
+  } catch {}
+  return fallback
+}
+export const exchangeIdAtom = atomWithStorage('cob-exchange', hydrate('cob-exchange', 'upbit'))
+```
+
+> **CSR-only pattern.** This works because the project is a client-only SPA where `localStorage` is always available. For SSR, add `typeof window !== 'undefined'` guard.
+
+**2. `rawExchangeData` prop replaces `availablePairs` (v0.5.0 — breaking):**
+
+Redesigned host data prop to pass raw REST JSON instead of pre-parsed pair arrays. Each adapter's `parseRawAvailablePairs()` handles exchange-specific extraction internally. Same pattern as `@gloomydumber/premium-table` v0.7.0's `rawResponses`.
+
+- When `rawExchangeData.rawResponses[currentExchangeId]` exists → adapter parses locally, no REST call
+- When the current exchange has no data in `rawResponses` → falls back to internal `fetchAvailablePairs()`
+- When `rawExchangeData` is omitted → fully standalone, no change from before
+
+**Motivation:** The previous `availablePairs: string[]` prop required wts-frontend to either (a) duplicate exchange-specific parsing logic, or (b) hardcode `if (exchange === 'upbit')` checks. Both approaches violated the principle of delegating normalization to the npm package.
+
+### Files Changed (v0.4.1 + v0.5.0 combined)
 
 | File | Change |
 |------|--------|
-| `src/components/Orderbook/Orderbook.tsx` | Added `availablePairs?: string[]` to `OrderbookProps`, pass through to `OrderbookView` |
-| `src/components/OrderbookView/OrderbookView.tsx` | Added `availablePairs?: string[]` to `OrderbookViewProps`, pass to `useOrderbook()` |
-| `src/hooks/useOrderbook.ts` | Accept `availablePairs` param, pass to `useAvailablePairs()` |
-| `src/hooks/useAvailablePairs.ts` | Accept `externalPairs` param; split into two effects (external vs internal fetch) |
+| `src/store/configAtoms.ts` | Added `hydrate<T>()` helper, all 4 `atomWithStorage` atoms use sync init |
+| `src/exchanges/types.ts` | Added `parseRawAvailablePairs?` to `OrderbookAdapter` interface |
+| `src/exchanges/adapters/{upbit,bithumb,binance,bybit,okx,coinbase}.ts` | Added `parseRawAvailablePairs()`, refactored `fetchAvailablePairs` to delegate |
+| `src/components/Orderbook/Orderbook.tsx` | Replaced `availablePairs` with `rawExchangeData` prop, added `RawExchangeData` interface |
+| `src/components/Orderbook/index.ts` | Re-export `RawExchangeData` type |
+| `src/components/OrderbookView/OrderbookView.tsx` | Pass `rawExchangeData` through |
+| `src/hooks/useOrderbook.ts` | Accept `rawExchangeData` instead of `availablePairs` |
+| `src/hooks/useAvailablePairs.ts` | Rewritten: check `rawExchangeData` for current exchange first, fall back to internal fetch |
+| `src/lib.ts` | Export `RawExchangeData` type |
+
+### Previous Session (2026-03-11): `availablePairs` Prop (superseded by v0.5.0)
+
+Added `availablePairs?: string[]` prop — host apps could pass pre-parsed pair arrays. Replaced by `rawExchangeData` in v0.5.0 because it required the host to handle exchange-specific parsing.
 
 ---
 
@@ -246,57 +283,15 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 - Consider adding `formatPrice` locale support (KRW comma formatting, etc.)
 - Phase 2: integrate into `wts-frontend` as OrderbookWidget with `showHeader={false}`
 
-## Integration with wts-frontend Connection Orchestration (2026-03-12)
+### Integration with wts-frontend (verified via HAR analysis)
 
-**Context:** wts-frontend fetches Upbit `market/all` and Binance `ticker/price` once via `ConnectionManager`, stores raw responses in a shared Jotai atom, and passes them to Orderbook via `rawExchangeData.rawResponses`.
+wts-frontend fetches Upbit `market/all` and Binance `ticker/price` once via `ConnectionManager`, stores raw responses in a shared Jotai atom, and passes them to Orderbook via `rawExchangeData.rawResponses`. The `OrderbookWidget` gates render until shared data is available (`rawData !== null`).
 
-**How it works in wts-frontend:**
-- `ConnectionManager` fetches raw data → stored in `premiumTableRawDataAtom` (shared across widgets)
-- `OrderbookWidget` gates render until shared data is available (`rawData !== null`)
-- Passes `{ rawResponses: rawData }` as `rawExchangeData` prop
-- If the Orderbook's currently selected exchange (e.g., `binance`) has data in `rawResponses`, `parseRawAvailablePairs()` parses it locally — no REST call
-- If not in `rawResponses`, falls back to internal `fetchAvailablePairs()`
-
-**Verified result (HAR analysis):**
-- Upbit `market/all`: shared with PremiumTable, no separate Orderbook fetch when Upbit data is in cache
-- Binance: ConnectionManager provides `ticker/price` data. Orderbook's Binance adapter accepts both `ticker/price` and `exchangeInfo` formats. However, Orderbook still independently calls `exchangeInfo` for `fetchAvailablePairs` when `ticker/price` format is provided (because `parseRawAvailablePairs` detects it's not `exchangeInfo` format and uses suffix-stripping fallback — works but different data quality than `exchangeInfo` with `status: "TRADING"`)
-- Remaining: 1x `exchangeInfo` (full) still fetched by Orderbook for Binance. Could be eliminated if wts-frontend switches ConnectionManager to fetch `exchangeInfo` instead of `ticker/price` (open decision, documented in wts-frontend HANDOFF.md)
-
-**`depth?limit=1000` (3x) is expected:** Binance diff depth stream protocol requires REST snapshot for sequence alignment. Initial snapshot + re-snapshot after WS onOpen + potential sequence gap re-sync.
-
----
-
-## v0.5.0: `rawExchangeData` Prop (Breaking — replaces `availablePairs`)
-
-**Purpose:** Allow host apps to pass raw REST responses directly. Adapters handle parsing internally via `parseRawAvailablePairs()`. Same pattern as `@gloomydumber/premium-table` v0.7.0's `rawResponses`.
-
-**Interface (breaking change from v0.4.x):**
-```typescript
-interface RawExchangeData {
-  rawResponses: Record<string, unknown>  // keyed by exchange ID
-}
-interface OrderbookProps {
-  rawExchangeData?: RawExchangeData  // replaces availablePairs
-}
-```
-
-**Behavior:**
-- When `rawExchangeData.rawResponses[currentExchangeId]` exists: adapter's `parseRawAvailablePairs()` parses raw JSON locally. No REST call for that exchange.
-- When the current exchange has no data in `rawResponses`: falls back to internal `fetchAvailablePairs()`.
-- When `rawExchangeData` is omitted: fully standalone mode, no change from before.
-
-**New adapter method — `parseRawAvailablePairs(data, quote): string[]`:**
-Extracts parse logic from `fetchAvailablePairs`. Added to all 6 adapters. `fetchAvailablePairs` now delegates to `parseRawAvailablePairs` after fetch. Binance adapter handles both `exchangeInfo` and `ticker/price` formats.
-
-**Files changed:**
-- `src/exchanges/types.ts` — Added `parseRawAvailablePairs?` to `OrderbookAdapter` interface
-- `src/exchanges/adapters/{upbit,bithumb,binance,bybit,okx,coinbase}.ts` — Added `parseRawAvailablePairs()`, refactored `fetchAvailablePairs` to delegate
-- `src/components/Orderbook/Orderbook.tsx` — Replaced `availablePairs` with `rawExchangeData` prop, added `RawExchangeData` interface
-- `src/components/Orderbook/index.ts` — Re-export `RawExchangeData` type
-- `src/components/OrderbookView/OrderbookView.tsx` — Pass `rawExchangeData` through
-- `src/hooks/useOrderbook.ts` — Accept `rawExchangeData` instead of `availablePairs`
-- `src/hooks/useAvailablePairs.ts` — Rewritten: check `rawExchangeData` for current exchange first, fall back to internal fetch
-- `src/lib.ts` — Export `RawExchangeData` type
+**Verified result:**
+- Upbit `market/all`: shared with PremiumTable — no separate Orderbook fetch
+- Binance: ConnectionManager provides `ticker/price`. Orderbook's Binance adapter accepts both `ticker/price` and `exchangeInfo` formats via `parseRawAvailablePairs`
+- **Remaining:** Orderbook still independently fetches `exchangeInfo` (full, ~4MB) for Binance `fetchAvailablePairs` (different URL than shared `ticker/price`). Could be eliminated if wts-frontend switches ConnectionManager to `exchangeInfo` (open decision — see wts-frontend HANDOFF.md)
+- `depth?limit=1000` (3x) is expected — Binance diff stream protocol requires REST snapshot for sequence alignment
 
 ---
 
