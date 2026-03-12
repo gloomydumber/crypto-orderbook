@@ -3,7 +3,7 @@ import './lib-styles.css'
 
 // Main component
 export { Orderbook } from './components/Orderbook'
-export type { OrderbookProps } from './components/Orderbook'
+export type { OrderbookProps, RawExchangeData } from './components/Orderbook'
 
 // Control API
 export { setUpdatesPaused } from './hooks/useOrderbook'

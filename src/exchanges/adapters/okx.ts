@@ -102,14 +102,19 @@ export const okxAdapter: OrderbookAdapter = {
     }
   },
 
+  parseRawAvailablePairs(data: unknown, quote: string): string[] {
+    const json = data as OkxTickersResponse
+    if (json.code !== '0') return []
+    return json.data
+      .filter(t => t.instId.endsWith(`-${quote}`))
+      .map(t => t.instId.split('-')[0])
+  },
+
   async fetchAvailablePairs(quote: string, signal?: AbortSignal): Promise<string[]> {
     const data = await fetchJson<OkxTickersResponse>(
       'https://www.okx.com/api/v5/market/tickers?instType=SPOT',
       signal,
     )
-    if (data.code !== '0') return []
-    return data.data
-      .filter(t => t.instId.endsWith(`-${quote}`))
-      .map(t => t.instId.split('-')[0])
+    return this.parseRawAvailablePairs!(data, quote)
   },
 }

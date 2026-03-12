@@ -1,30 +1,50 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useAtom, useAtomValue } from 'jotai'
 import { exchangeIdAtom, quoteAtom, baseAtom } from '../store/configAtoms'
 import { availablePairsAtom } from '../store/orderbookAtoms'
 import { getAdapterById } from '../exchanges/registry'
 
-export function useAvailablePairs(externalPairs?: string[]) {
+interface RawExchangeData {
+  rawResponses: Record<string, unknown>
+}
+
+export function useAvailablePairs(rawExchangeData?: RawExchangeData) {
   const exchangeId = useAtomValue(exchangeIdAtom)
   const quote = useAtomValue(quoteAtom)
   const [, setAvailablePairs] = useAtom(availablePairsAtom)
   const [base, setBase] = useAtom(baseAtom)
+  const didParseRef = useRef(false)
 
-  // Use externally provided pairs if available
-  useEffect(() => {
-    if (!externalPairs) return
-    const sorted = [...externalPairs].sort()
+  // Apply parsed pairs and reset base if needed
+  const applyPairs = (pairs: string[]) => {
+    const sorted = pairs.sort()
     setAvailablePairs(sorted)
-
     if (sorted.length > 0 && !sorted.includes(base)) {
       const btc = sorted.find(p => p === 'BTC')
       setBase(btc ?? sorted[0])
     }
-  }, [externalPairs, base, setAvailablePairs, setBase])
+  }
 
-  // Internal fetch — only when no external pairs provided
+  // Use host-provided raw data if available for the current exchange
   useEffect(() => {
-    if (externalPairs) return
+    if (!rawExchangeData) return
+    const raw = rawExchangeData.rawResponses[exchangeId]
+    if (!raw) return
+
+    const adapter = getAdapterById(exchangeId)
+    if (!adapter?.parseRawAvailablePairs) return
+
+    didParseRef.current = true
+    const pairs = adapter.parseRawAvailablePairs(raw, quote)
+    applyPairs(pairs)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawExchangeData, exchangeId, quote])
+
+  // Internal fetch — only when no raw data available for this exchange
+  useEffect(() => {
+    if (didParseRef.current) return
+    if (rawExchangeData?.rawResponses[exchangeId]) return
+
     const adapter = getAdapterById(exchangeId)
     if (!adapter) return
 
@@ -33,15 +53,7 @@ export function useAvailablePairs(externalPairs?: string[]) {
     adapter.fetchAvailablePairs(quote, controller.signal)
       .then(pairs => {
         if (controller.signal.aborted) return
-        const sorted = pairs.sort()
-        setAvailablePairs(sorted)
-
-        // If current base not in available pairs, reset to first (typically BTC)
-        if (sorted.length > 0 && !sorted.includes(base)) {
-          // Prefer BTC if available
-          const btc = sorted.find(p => p === 'BTC')
-          setBase(btc ?? sorted[0])
-        }
+        applyPairs(pairs)
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -50,5 +62,6 @@ export function useAvailablePairs(externalPairs?: string[]) {
       })
 
     return () => controller.abort()
-  }, [externalPairs, exchangeId, quote, base, setAvailablePairs, setBase])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawExchangeData, exchangeId, quote])
 }

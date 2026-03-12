@@ -100,13 +100,28 @@ export const binanceAdapter: OrderbookAdapter = {
     }
   },
 
+  parseRawAvailablePairs(data: unknown, quote: string): string[] {
+    // Supports both exchangeInfo format and ticker/price format
+    const json = data as Record<string, unknown>
+    if ('symbols' in json) {
+      // exchangeInfo: { symbols: [{ baseAsset, quoteAsset, status }] }
+      const info = json as BinanceExchangeInfo
+      return info.symbols
+        .filter(s => s.quoteAsset === quote && s.status === 'TRADING')
+        .map(s => s.baseAsset)
+    }
+    // ticker/price: [{ symbol, price }]
+    const items = data as { symbol: string; price: string }[]
+    return items
+      .filter(item => item.symbol.endsWith(quote) && Number(item.price) > 0)
+      .map(item => item.symbol.slice(0, -quote.length))
+  },
+
   async fetchAvailablePairs(quote: string, signal?: AbortSignal): Promise<string[]> {
     const data = await fetchJson<BinanceExchangeInfo>(
       'https://api.binance.com/api/v3/exchangeInfo',
       signal,
     )
-    return data.symbols
-      .filter(s => s.quoteAsset === quote && s.status === 'TRADING')
-      .map(s => s.baseAsset)
+    return this.parseRawAvailablePairs!(data, quote)
   },
 }

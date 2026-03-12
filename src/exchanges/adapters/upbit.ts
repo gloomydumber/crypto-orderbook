@@ -87,14 +87,19 @@ export const upbitAdapter: OrderbookAdapter = {
     return `${quote}-${base}`
   },
 
+  parseRawAvailablePairs(data: unknown, quote: string): string[] {
+    const items = data as UpbitMarketItem[]
+    return items
+      .filter(m => m.market.startsWith(`${quote}-`))
+      .map(m => m.market.split('-')[1])
+  },
+
   async fetchAvailablePairs(quote: string, signal?: AbortSignal): Promise<string[]> {
     const data = await fetchJson<UpbitMarketItem[]>(
       'https://api.upbit.com/v1/market/all',
       signal,
     )
-    return data
-      .filter(m => m.market.startsWith(`${quote}-`))
-      .map(m => m.market.split('-')[1])
+    return this.parseRawAvailablePairs!(data, quote)
   },
 
   async fetchSupportedLevels(pair: NormalizedPair, signal?: AbortSignal) {

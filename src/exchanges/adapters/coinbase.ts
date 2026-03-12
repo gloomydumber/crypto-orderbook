@@ -103,13 +103,18 @@ export const coinbaseAdapter: OrderbookAdapter = {
     }
   },
 
+  parseRawAvailablePairs(data: unknown, quote: string): string[] {
+    const items = data as CoinbaseProduct[]
+    return items
+      .filter(p => p.quote_currency === quote && p.status !== 'delisted')
+      .map(p => p.base_currency)
+  },
+
   async fetchAvailablePairs(quote: string, signal?: AbortSignal): Promise<string[]> {
     const data = await fetchJson<CoinbaseProduct[]>(
       'https://api.exchange.coinbase.com/products',
       signal,
     )
-    return data
-      .filter(p => p.quote_currency === quote && p.status !== 'delisted')
-      .map(p => p.base_currency)
+    return this.parseRawAvailablePairs!(data, quote)
   },
 }

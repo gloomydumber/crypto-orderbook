@@ -2,18 +2,19 @@ import { Box, Typography, useTheme } from '@mui/material'
 import { OrderbookToolbar } from '../OrderbookToolbar'
 import { OrderbookDisplay } from '../OrderbookDisplay'
 import { useOrderbook } from '../../hooks/useOrderbook'
+import type { RawExchangeData } from '../Orderbook/Orderbook'
 
 interface OrderbookViewProps {
   showHeader?: boolean
   onCopy?: (label: string, value: string) => void
-  availablePairs?: string[]
+  rawExchangeData?: RawExchangeData
 }
 
-export function OrderbookView({ showHeader = true, onCopy, availablePairs }: OrderbookViewProps) {
+export function OrderbookView({ showHeader = true, onCopy, rawExchangeData }: OrderbookViewProps) {
   const theme = useTheme()
 
   // Initialize the orderbook WebSocket lifecycle
-  useOrderbook(availablePairs)
+  useOrderbook(rawExchangeData)
 
   return (
     <Box style={{

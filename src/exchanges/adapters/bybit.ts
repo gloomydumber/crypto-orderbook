@@ -97,14 +97,19 @@ export const bybitAdapter: OrderbookAdapter = {
     }
   },
 
+  parseRawAvailablePairs(data: unknown, quote: string): string[] {
+    const json = data as BybitTickersResponse
+    if (json.retCode !== 0) return []
+    return json.result.list
+      .filter(t => t.symbol.endsWith(quote))
+      .map(t => t.symbol.slice(0, -quote.length))
+  },
+
   async fetchAvailablePairs(quote: string, signal?: AbortSignal): Promise<string[]> {
     const data = await fetchJson<BybitTickersResponse>(
       'https://api.bybit.com/v5/market/tickers?category=spot',
       signal,
     )
-    if (data.retCode !== 0) return []
-    return data.result.list
-      .filter(t => t.symbol.endsWith(quote))
-      .map(t => t.symbol.slice(0, -quote.length))
+    return this.parseRawAvailablePairs!(data, quote)
   },
 }

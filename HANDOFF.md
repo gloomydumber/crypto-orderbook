@@ -246,6 +246,40 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 - Consider adding `formatPrice` locale support (KRW comma formatting, etc.)
 - Phase 2: integrate into `wts-frontend` as OrderbookWidget with `showHeader={false}`
 
+## v0.5.0: `rawExchangeData` Prop (Breaking — replaces `availablePairs`)
+
+**Purpose:** Allow host apps to pass raw REST responses directly. Adapters handle parsing internally via `parseRawAvailablePairs()`. Same pattern as `@gloomydumber/premium-table` v0.7.0's `rawResponses`.
+
+**Interface (breaking change from v0.4.x):**
+```typescript
+interface RawExchangeData {
+  rawResponses: Record<string, unknown>  // keyed by exchange ID
+}
+interface OrderbookProps {
+  rawExchangeData?: RawExchangeData  // replaces availablePairs
+}
+```
+
+**Behavior:**
+- When `rawExchangeData.rawResponses[currentExchangeId]` exists: adapter's `parseRawAvailablePairs()` parses raw JSON locally. No REST call for that exchange.
+- When the current exchange has no data in `rawResponses`: falls back to internal `fetchAvailablePairs()`.
+- When `rawExchangeData` is omitted: fully standalone mode, no change from before.
+
+**New adapter method — `parseRawAvailablePairs(data, quote): string[]`:**
+Extracts parse logic from `fetchAvailablePairs`. Added to all 6 adapters. `fetchAvailablePairs` now delegates to `parseRawAvailablePairs` after fetch. Binance adapter handles both `exchangeInfo` and `ticker/price` formats.
+
+**Files changed:**
+- `src/exchanges/types.ts` — Added `parseRawAvailablePairs?` to `OrderbookAdapter` interface
+- `src/exchanges/adapters/{upbit,bithumb,binance,bybit,okx,coinbase}.ts` — Added `parseRawAvailablePairs()`, refactored `fetchAvailablePairs` to delegate
+- `src/components/Orderbook/Orderbook.tsx` — Replaced `availablePairs` with `rawExchangeData` prop, added `RawExchangeData` interface
+- `src/components/Orderbook/index.ts` — Re-export `RawExchangeData` type
+- `src/components/OrderbookView/OrderbookView.tsx` — Pass `rawExchangeData` through
+- `src/hooks/useOrderbook.ts` — Accept `rawExchangeData` instead of `availablePairs`
+- `src/hooks/useAvailablePairs.ts` — Rewritten: check `rawExchangeData` for current exchange first, fall back to internal fetch
+- `src/lib.ts` — Export `RawExchangeData` type
+
+---
+
 ## Files Changed This Session
 
 ### Modified

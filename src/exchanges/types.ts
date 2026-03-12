@@ -16,6 +16,9 @@ export interface OrderbookAdapter {
   fetchSnapshot?(pair: NormalizedPair, signal?: AbortSignal): Promise<OrderbookUpdate | null>
   fetchAvailablePairs(quote: string, signal?: AbortSignal): Promise<string[]>
 
+  /** Parse pre-fetched raw REST response into available pairs. Used when host provides data externally. */
+  parseRawAvailablePairs?(data: unknown, quote: string): string[]
+
   /** Native tick size + current price from exchange REST API. Used to pre-compute tick options before WS data arrives. */
   fetchNativeTick?(pair: NormalizedPair, signal?: AbortSignal): Promise<{ nativeTick: number; price: number }>
 
