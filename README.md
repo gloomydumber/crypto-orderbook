@@ -44,12 +44,34 @@ function App() {
 | `theme` | `Theme` | Dark green terminal | MUI Theme override |
 | `showHeader` | `boolean` | `true` | Show "ORDERBOOK" title bar |
 | `onCopy` | `(label: string, value: string) => void` | — | Callback when a price row is clicked |
+| `rawExchangeData` | `RawExchangeData` | — | Host-provided raw REST responses. Skips internal pair fetch when provided. |
 
 ### Embedding in another app (e.g., hiding the header)
 
 ```tsx
 <Orderbook height="100%" showHeader={false} />
 ```
+
+### Host-Provided Exchange Data
+
+When embedding in a host app that already fetches exchange REST data (e.g., for shared caching across widgets), pass raw responses via `rawExchangeData`. Each adapter handles parsing internally via `parseRawAvailablePairs()`.
+
+```tsx
+import { Orderbook } from '@gloomydumber/crypto-orderbook'
+import type { RawExchangeData } from '@gloomydumber/crypto-orderbook'
+
+// Host app fetches raw REST responses once and shares across widgets
+const rawExchangeData: RawExchangeData = {
+  rawResponses: {
+    upbit: upbitMarketAllResponse,    // raw JSON from https://api.upbit.com/v1/market/all
+    binance: binanceTickerResponse,   // raw JSON from https://api.binance.com/api/v3/ticker/price
+  }
+}
+
+<Orderbook rawExchangeData={rawExchangeData} showHeader={false} />
+```
+
+When `rawExchangeData` is omitted, the component fetches internally (standalone mode). If the currently selected exchange has no data in `rawResponses`, it also falls back to internal fetch for that exchange. This prop uses the same interface as `@gloomydumber/premium-table`'s `rawExchangeData` — both packages accept `{ rawResponses: Record<string, unknown> }`, enabling a single shared data source across widgets.
 
 ### Custom theme
 
@@ -72,9 +94,10 @@ const lightTheme = createTheme({
 - **Live WebSocket data** — real-time bids/asks with RAF-throttled rendering (max 1 flush per animation frame)
 - **Tick grouping** — server-side for Upbit/Bithumb, client-side for others. Tick options pre-loaded via REST APIs
 - **Auto-pair discovery** — available trading pairs fetched per exchange/quote combination
-- **Deep snapshots** — Binance fetches 1000-level REST snapshot on pair change
+- **Deep snapshots** — Binance fetches 1000-level REST snapshot with sequence-aligned diff stream
 - **Edge padding** — outermost price levels show qty=0 instead of disappearing to prevent visual jitter
-- **Persistent config** — exchange, quote, base, and tick size persisted to localStorage
+- **Persistent config** — exchange, quote, base, and tick size persisted to localStorage (sync hydration)
+- **Crossed-book detection** — automatically prunes stale levels when best ask < best bid
 - **Scrollable orderbook** — asks use `column-reverse` for natural scroll origin near spread; `scrollbar-gutter: stable` prevents layout shift
 
 ## Exports
@@ -90,6 +113,7 @@ import { Orderbook } from '@gloomydumber/crypto-orderbook'
 ```tsx
 import type {
   OrderbookProps,
+  RawExchangeData,
   OrderbookAdapter,
   NormalizedPair,
   ExchangeInfo,
@@ -114,6 +138,17 @@ import {
   okxAdapter,
   coinbaseAdapter,
 } from '@gloomydumber/crypto-orderbook'
+```
+
+### Control API
+
+```tsx
+import { setUpdatesPaused } from '@gloomydumber/crypto-orderbook'
+
+// Pause atom flushes during grid drag/resize
+setUpdatesPaused(true)
+// Resume — single catch-up flush applies all accumulated changes
+setUpdatesPaused(false)
 ```
 
 ## Development

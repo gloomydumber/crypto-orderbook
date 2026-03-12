@@ -98,6 +98,7 @@ interface OrderbookAdapter {
 ### Public API (Props)
 
 ```typescript
+// Same interface in both @gloomydumber/crypto-orderbook and @gloomydumber/premium-table
 interface RawExchangeData {
   rawResponses: Record<string, unknown>  // keyed by exchange ID
 }
@@ -109,6 +110,8 @@ interface OrderbookProps {
   rawExchangeData?: RawExchangeData  // Host-provided raw REST JSON — adapters parse internally
 }
 ```
+
+**Cross-package alignment:** Both `@gloomydumber/crypto-orderbook` and `@gloomydumber/premium-table` (v0.8.0+) use the same `rawExchangeData` prop name and `RawExchangeData` interface. Host apps pass a single `{ rawResponses: Record<string, unknown> }` object to both widgets.
 
 ## Session: 2026-03-12 — Sync Hydration + rawExchangeData Prop + wts-frontend Integration
 
