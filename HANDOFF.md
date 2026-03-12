@@ -246,6 +246,26 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 - Consider adding `formatPrice` locale support (KRW comma formatting, etc.)
 - Phase 2: integrate into `wts-frontend` as OrderbookWidget with `showHeader={false}`
 
+## Integration with wts-frontend Connection Orchestration (2026-03-12)
+
+**Context:** wts-frontend fetches Upbit `market/all` and Binance `ticker/price` once via `ConnectionManager`, stores raw responses in a shared Jotai atom, and passes them to Orderbook via `rawExchangeData.rawResponses`.
+
+**How it works in wts-frontend:**
+- `ConnectionManager` fetches raw data → stored in `premiumTableRawDataAtom` (shared across widgets)
+- `OrderbookWidget` gates render until shared data is available (`rawData !== null`)
+- Passes `{ rawResponses: rawData }` as `rawExchangeData` prop
+- If the Orderbook's currently selected exchange (e.g., `binance`) has data in `rawResponses`, `parseRawAvailablePairs()` parses it locally — no REST call
+- If not in `rawResponses`, falls back to internal `fetchAvailablePairs()`
+
+**Verified result (HAR analysis):**
+- Upbit `market/all`: shared with PremiumTable, no separate Orderbook fetch when Upbit data is in cache
+- Binance: ConnectionManager provides `ticker/price` data. Orderbook's Binance adapter accepts both `ticker/price` and `exchangeInfo` formats. However, Orderbook still independently calls `exchangeInfo` for `fetchAvailablePairs` when `ticker/price` format is provided (because `parseRawAvailablePairs` detects it's not `exchangeInfo` format and uses suffix-stripping fallback — works but different data quality than `exchangeInfo` with `status: "TRADING"`)
+- Remaining: 1x `exchangeInfo` (full) still fetched by Orderbook for Binance. Could be eliminated if wts-frontend switches ConnectionManager to fetch `exchangeInfo` instead of `ticker/price` (open decision, documented in wts-frontend HANDOFF.md)
+
+**`depth?limit=1000` (3x) is expected:** Binance diff depth stream protocol requires REST snapshot for sequence alignment. Initial snapshot + re-snapshot after WS onOpen + potential sequence gap re-sync.
+
+---
+
 ## v0.5.0: `rawExchangeData` Prop (Breaking — replaces `availablePairs`)
 
 **Purpose:** Allow host apps to pass raw REST responses directly. Adapters handle parsing internally via `parseRawAvailablePairs()`. Same pattern as `@gloomydumber/premium-table` v0.7.0's `rawResponses`.
