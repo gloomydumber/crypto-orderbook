@@ -288,12 +288,11 @@ When `bids.length === 0 && asks.length === 0`, renders `<CircularProgress size={
 
 ### Integration with wts-frontend (verified via HAR analysis)
 
-wts-frontend's `ConnectionManager` + `MarketDataClient` layer deduplicates **all** external REST endpoint requests by URL (same URL = same cached/in-flight Promise). Raw responses are stored in a shared Jotai atom and passed to Orderbook via `rawExchangeData.rawResponses`. The `OrderbookWidget` gates render until shared data is available (`rawData !== null`). The dedup layer is generic — not limited to specific exchanges — and automatically applies to any endpoint added in the future.
+wts-frontend's `ConnectionManager` + `MarketDataClient` layer deduplicates **all** external REST endpoint requests by URL (same URL = same cached/in-flight Promise). Raw responses are stored in per-widget Jotai atoms and passed to Orderbook via `rawExchangeData.rawResponses`. The `OrderbookWidget` gates render until shared data is available (`rawData !== null`). The dedup layer is generic — not limited to specific exchanges — and automatically applies to any endpoint added in the future.
 
-**Verified result:**
-- Upbit `market/all`: shared with PremiumTable — no separate Orderbook fetch
-- Binance: ConnectionManager provides `ticker/price`. Orderbook's Binance adapter accepts both `ticker/price` and `exchangeInfo` formats via `parseRawAvailablePairs`
-- **Remaining:** Orderbook still independently fetches `exchangeInfo` (full, ~4MB) for Binance `fetchAvailablePairs` (different URL than shared `ticker/price`). Could be eliminated if wts-frontend switches ConnectionManager to `exchangeInfo` (open decision — see wts-frontend HANDOFF.md)
+**Verified result (updated 2026-03-13):**
+- Upbit `market/all`: shared with PremiumTable — deduped by URL, one actual request
+- Binance: ConnectionManager now provides `exchangeInfo` to Orderbook (via separate `orderbookRawDataAtom`). `parseRawAvailablePairs` detects the format via duck-typing (`'symbols' in json`). PremiumTable gets `ticker/price` via its own atom — no conflict.
 - `depth?limit=1000` (3x) is expected — Binance diff stream protocol requires REST snapshot for sequence alignment
 
 ---
