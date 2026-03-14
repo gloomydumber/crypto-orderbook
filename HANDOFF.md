@@ -113,6 +113,45 @@ interface OrderbookProps {
 
 **Cross-package alignment:** Both `@gloomydumber/crypto-orderbook` and `@gloomydumber/premium-table` (v0.8.0+) use the same `rawExchangeData` prop name and `RawExchangeData` interface. Host apps pass a single `{ rawResponses: Record<string, unknown> }` object to both widgets.
 
+## Session: 2026-03-14 — localStorage Key Convention + getOnInit (v0.6.0)
+
+### Summary
+
+Adopted the `wts:<widget>:<key>` localStorage key convention shared across wts-frontend and all widget packages. Replaced the custom `hydrate()` helper with Jotai's built-in `getOnInit: true` option for `atomWithStorage`.
+
+### What Was Done
+
+**1. localStorage key rename:**
+
+All keys renamed from `cob-*` prefix to `wts:orderbook:*`:
+- `cob-exchange` → `wts:orderbook:exchange`
+- `cob-quote` → `wts:orderbook:quote`
+- `cob-base` → `wts:orderbook:base`
+- `cob-tick` → `wts:orderbook:tick`
+
+This enables the host app (wts-frontend) to read persisted exchange selections directly from localStorage without importing package internals — used by ConnectionManager to dynamically fetch only the exchanges the user has selected.
+
+**2. Replaced `hydrate()` with `getOnInit: true`:**
+
+The custom `hydrate<T>()` helper (sync localStorage read at module init) was replaced with Jotai's built-in `getOnInit: true` option on `atomWithStorage`. Both achieve the same result (prevent flash-mount from wrong defaults), but `getOnInit` is the official Jotai API for this.
+
+```typescript
+// Before:
+export const exchangeIdAtom = atomWithStorage('cob-exchange', hydrate('cob-exchange', 'upbit'))
+// After:
+const SYNC = { getOnInit: true } as const
+export const exchangeIdAtom = atomWithStorage('wts:orderbook:exchange', 'upbit', undefined, SYNC)
+```
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/store/configAtoms.ts` | Renamed all 4 keys, replaced `hydrate()` with `getOnInit: true` |
+| `package.json` | Version 0.5.1 → 0.6.0 |
+
+---
+
 ## Session: 2026-03-12 — Sync Hydration + rawExchangeData Prop + wts-frontend Integration
 
 ### Summary
